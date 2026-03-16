@@ -43,18 +43,21 @@ export async function POST(req: NextRequest) {
       return apiError('Account not found or deactivated', 403);
     }
 
-    // Create JWT session
+    // Create JWT session (include teamId for team_leader role)
     const token = await createSession({
       userId: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
+      ...(user.teamId && { teamId: user.teamId }),
     });
 
     setSessionCookie(token);
 
+    // Redirect team_leaders to /team after login
     return apiSuccess({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, teamId: user.teamId },
+      redirectTo: user.role === 'team_leader' ? '/team' : '/dashboard',
     });
   } catch (error) {
     console.error('verify-otp error:', error);

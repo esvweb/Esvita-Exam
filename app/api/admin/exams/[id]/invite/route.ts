@@ -48,6 +48,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     },
   });
 
+  // Set validityStartedAt on exam if not already started
+  if (!exam.validityStartedAt) {
+    await prisma.exam.update({
+      where: { id: params.id },
+      data: { validityStartedAt: new Date() },
+    });
+  }
+
   const examLink = `${APP_URL}/exam/${invitation.uniqueToken}`;
   const examTitle = exam.titleEn || exam.titleTr || 'Exam';
 

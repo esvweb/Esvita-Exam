@@ -20,6 +20,7 @@ export default function CreateExamPage() {
     titleEn: '', titleFra: '', titleRu: '', titleTr: '', titleIta: '',
     descriptionEn: '', descriptionFra: '', descriptionRu: '', descriptionTr: '', descriptionIta: '',
     timePerQuestion: 60,
+    validityHours: 72,
   });
 
   const titleKey = (lang: Language) => `title${lang.charAt(0)}${lang.slice(1).toLowerCase()}` as keyof typeof form;
@@ -93,6 +94,27 @@ export default function CreateExamPage() {
                   Calculated after adding questions
                 </div>
                 <p className="text-xs text-slate-400 mt-1">= Questions × Time per question</p>
+              </div>
+              <div className="form-group">
+                <label className="label">Validity Period (hours)</label>
+                <input
+                  type="number"
+                  className="input"
+                  min={1}
+                  max={720}
+                  value={form.validityHours}
+                  onChange={(e) => setForm((f) => ({ ...f, validityHours: parseInt(e.target.value) || 72 }))}
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Results are emailed automatically after this period (from first invite/completion). Default: 72h.
+                </p>
+              </div>
+              <div className="form-group">
+                <label className="label">Results Delivery</label>
+                <div className="input bg-slate-50 text-slate-500 cursor-default">
+                  Auto — sent via scheduled job
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Candidates get a confirmation email immediately, results later.</p>
               </div>
             </div>
           </div>

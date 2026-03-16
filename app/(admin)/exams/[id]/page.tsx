@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   ArrowLeft, Plus, Trash2, Upload, Send, Copy,
   HelpCircle, CheckCircle2, Mail, Eye, Download,
+  Users, UsersRound, Search, Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 import { LANGUAGE_FLAGS, LANGUAGE_LABELS, getAvailableLanguages, formatDateTime } from '@/lib/utils';
@@ -25,9 +26,24 @@ interface Exam {
   titleTr: string | null; titleIta: string | null;
   descriptionEn: string | null;
   timePerQuestion: number; isActive: boolean; createdAt: string;
+  validityHours: number;
+  validityStartedAt: string | null;
+  resultsEmailSentAt: string | null;
   _count: { questions: number; sessions: number };
   creator: { name: string; email: string };
   questions: Question[];
+}
+
+interface Audience {
+  id: string; name: string; email: string;
+  nickname: string | null; realName: string | null;
+  isActive: boolean; isArchived: boolean;
+  team: { id: string; name: string; color: string } | null;
+}
+
+interface Team {
+  id: string; name: string; color: string;
+  _count: { audiences: number };
 }
 
 interface Question {
@@ -122,6 +138,17 @@ export default function ExamDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Assign Modal
+  const [showAssign, setShowAssign] = useState(false);
+  const [assignTab, setAssignTab] = useState<'all' | 'teams' | 'users'>('all');
+  const [audiences, setAudiences] = useState<Audience[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
+  const [selectedAudienceIds, setSelectedAudienceIds] = useState<Set<string>>(new Set());
+  const [audienceSearch, setAudienceSearch] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignResult, setAssignResult] = useState<{ sent: number; skipped: number } | null>(null);
+
   const fetchExam = useCallback(async () => {
     const res = await fetch(`/api/admin/exams/${id}`);
     if (res.ok) setExam(await res.json());
@@ -138,6 +165,42 @@ export default function ExamDetailPage() {
     fetchInvitations();
     fetch('/api/auth/me').then(r => r.json()).then(d => setUserRole(d?.role || ''));
   }, [fetchExam, fetchInvitations]);
+
+  const openAssignModal = async () => {
+    setAssignResult(null);
+    setSelectedTeamIds(new Set());
+    setSelectedAudienceIds(new Set());
+    setAssignTab('all');
+    setAudienceSearch('');
+    setShowAssign(true);
+    if (audiences.length === 0) {
+      const [audRes, teamRes] = await Promise.all([
+        fetch('/api/admin/audiences'),
+        fetch('/api/admin/teams'),
+      ]);
+      if (audRes.ok) setAudiences(await audRes.json());
+      if (teamRes.ok) setTeams(await teamRes.json());
+    }
+  };
+
+  const handleAssign = async () => {
+    setAssigning(true);
+    const body: Record<string, unknown> = { assignTo: assignTab };
+    if (assignTab === 'teams') body.teamIds = Array.from(selectedTeamIds);
+    if (assignTab === 'users') body.audienceIds = Array.from(selectedAudienceIds);
+    const res = await fetch(`/api/admin/exams/${id}/assign`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json();
+    if (res.ok) {
+      setAssignResult({ sent: d.sent, skipped: d.skipped });
+      fetchInvitations();
+    } else {
+      error(d.error || 'Assignment failed');
+    }
+    setAssigning(false);
+  };
 
   const canDelete = ['super_admin', 'admin'].includes(userRole);
   const canWrite  = ['super_admin', 'admin', 'moderator'].includes(userRole);
@@ -275,6 +338,9 @@ export default function ExamDetailPage() {
             )}
             {canWrite && (
               <>
+                <button onClick={openAssignModal} className="btn-secondary btn-sm">
+                  <Users size={14} /> Assign Exam
+                </button>
                 <button onClick={() => setShowInvite(true)} className="btn-secondary btn-sm">
                   <Send size={14} /> Invite
                 </button>
@@ -295,7 +361,7 @@ export default function ExamDetailPage() {
         </div>
 
         {/* Exam Info Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div className="card p-4 text-center">
             <p className="text-2xl font-bold text-slate-800">{exam._count.questions}</p>
             <p className="text-xs text-slate-400">Questions</p>
@@ -307,6 +373,12 @@ export default function ExamDetailPage() {
           <div className="card p-4 text-center">
             <p className="text-2xl font-bold text-slate-800">{exam._count.sessions}</p>
             <p className="text-xs text-slate-400">Attempts</p>
+          </div>
+          <div className="card p-4 text-center">
+            <p className="text-2xl font-bold text-slate-800">{exam.validityHours ?? 72}h</p>
+            <p className="text-xs text-slate-400">Validity</p>
+            {exam.resultsEmailSentAt && <p className="text-[10px] text-emerald-600 mt-0.5">Results sent</p>}
+            {!exam.resultsEmailSentAt && exam.validityStartedAt && <p className="text-[10px] text-amber-600 mt-0.5">In progress</p>}
           </div>
           <div className="card p-4 text-center">
             <div className="flex flex-wrap justify-center gap-1">
@@ -453,6 +525,21 @@ export default function ExamDetailPage() {
               <div>
                 <label className="label">Status</label>
                 <p>{exam.isActive ? <span className="badge-green">Active</span> : <span className="badge-red">Inactive</span>}</p>
+              </div>
+              <div>
+                <label className="label">Validity Period</label>
+                <p className="text-slate-700 font-medium">{exam.validityHours ?? 72} hours</p>
+              </div>
+              <div>
+                <label className="label">Results Email Status</label>
+                <p>
+                  {exam.resultsEmailSentAt
+                    ? <span className="badge-green">Sent {formatDateTime(exam.resultsEmailSentAt)}</span>
+                    : exam.validityStartedAt
+                    ? <span className="badge-amber">Pending — expires {formatDateTime(new Date(new Date(exam.validityStartedAt).getTime() + (exam.validityHours ?? 72) * 3_600_000).toISOString())}</span>
+                    : <span className="badge-gray">Not started</span>
+                  }
+                </p>
               </div>
               <div>
                 <label className="label">Created By</label>
@@ -681,6 +768,180 @@ EXPLANATION: Optional explanation (blank line between questions)`}</pre>
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Assign Exam Modal ──────────────────────────────────────────────────── */}
+      <Modal isOpen={showAssign} onClose={() => setShowAssign(false)} title="Assign Exam to Candidates" size="xl">
+        {assignResult ? (
+          <div className="text-center py-8 space-y-4">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle2 size={32} className="text-emerald-600" />
+            </div>
+            <h3 className="font-semibold text-slate-800 text-lg">Assignments Sent!</h3>
+            <div className="flex justify-center gap-6">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-emerald-600">{assignResult.sent}</p>
+                <p className="text-xs text-slate-500">Invitations sent</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-slate-400">{assignResult.skipped}</p>
+                <p className="text-xs text-slate-500">Already invited / skipped</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-500">Exam validity period has started. Results will be emailed automatically after {exam.validityHours ?? 72} hours.</p>
+            <div className="flex justify-center gap-3 pt-2">
+              <button className="btn-secondary" onClick={() => setAssignResult(null)}>Assign More</button>
+              <button className="btn-primary" onClick={() => setShowAssign(false)}>Done</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Tabs */}
+            <div className="flex gap-1 border-b border-slate-200">
+              {([
+                { key: 'all', label: 'All Candidates', icon: UsersRound },
+                { key: 'teams', label: 'By Team', icon: Users },
+                { key: 'users', label: 'Select Individuals', icon: Search },
+              ] as const).map(({ key, label, icon: Icon }) => (
+                <button key={key} type="button" onClick={() => setAssignTab(key)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
+                    assignTab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Icon size={14} /> {label}
+                </button>
+              ))}
+            </div>
+
+            {/* All Candidates */}
+            {assignTab === 'all' && (
+              <div className="space-y-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <UsersRound size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-blue-800 text-sm">Assign to all active candidates</p>
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        {audiences.filter(a => a.isActive && !a.isArchived).length} active candidates will receive an invitation.
+                        Candidates who already have an active invitation for this exam will be skipped.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 flex items-start gap-2">
+                  <Clock size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>The {exam.validityHours ?? 72}-hour validity period will start when the first invitation is sent. Results emails will be dispatched automatically at the end of this period.</span>
+                </div>
+              </div>
+            )}
+
+            {/* By Team */}
+            {assignTab === 'teams' && (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500">Select one or more teams. All active members will receive an invitation.</p>
+                {teams.length === 0 ? (
+                  <p className="text-sm text-slate-400 py-4 text-center">No teams found</p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {teams.map((team) => (
+                      <label key={team.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedTeamIds.has(team.id)}
+                          onChange={(e) => {
+                            const next = new Set(selectedTeamIds);
+                            if (e.target.checked) next.add(team.id); else next.delete(team.id);
+                            setSelectedTeamIds(next);
+                          }}
+                          className="w-4 h-4 rounded"
+                        />
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                        <div className="flex-1">
+                          <p className="font-medium text-sm text-slate-800">{team.name}</p>
+                          <p className="text-xs text-slate-400">{team._count.audiences} members</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {selectedTeamIds.size > 0 && (
+                  <p className="text-xs text-blue-600">{selectedTeamIds.size} team(s) selected</p>
+                )}
+              </div>
+            )}
+
+            {/* Select Individuals */}
+            {assignTab === 'users' && (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    className="input pl-8 text-sm"
+                    placeholder="Search by name or email..."
+                    value={audienceSearch}
+                    onChange={(e) => setAudienceSearch(e.target.value)}
+                  />
+                </div>
+                {audiences.length === 0 ? (
+                  <p className="text-sm text-slate-400 py-4 text-center">No candidates found</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                    {audiences
+                      .filter(a => a.isActive && !a.isArchived)
+                      .filter(a => {
+                        const q = audienceSearch.toLowerCase();
+                        return !q || a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q) || (a.nickname || '').toLowerCase().includes(q);
+                      })
+                      .map((aud) => (
+                        <label key={aud.id} className="flex items-center gap-3 p-2.5 border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={selectedAudienceIds.has(aud.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedAudienceIds);
+                              if (e.target.checked) next.add(aud.id); else next.delete(aud.id);
+                              setSelectedAudienceIds(next);
+                            }}
+                            className="w-4 h-4 rounded flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">
+                              {aud.nickname ? <span className="text-slate-400 mr-1">[{aud.nickname}]</span> : null}
+                              {aud.realName || aud.name}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">{aud.email}</p>
+                          </div>
+                          {aud.team && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: aud.team.color + '22', color: aud.team.color }}>
+                              {aud.team.name}
+                            </span>
+                          )}
+                        </label>
+                      ))
+                    }
+                  </div>
+                )}
+                {selectedAudienceIds.size > 0 && (
+                  <p className="text-xs text-blue-600">{selectedAudienceIds.size} candidate(s) selected</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+              <button type="button" className="btn-secondary" onClick={() => setShowAssign(false)}>Cancel</button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={assigning || (assignTab === 'teams' && selectedTeamIds.size === 0) || (assignTab === 'users' && selectedAudienceIds.size === 0)}
+                onClick={handleAssign}
+              >
+                {assigning ? <Spinner size="sm" className="text-white" /> : <Send size={14} />}
+                {assigning ? 'Sending...' : 'Send Invitations'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ── Delete Confirm ─────────────────────────────────────────────────────── */}

@@ -97,6 +97,10 @@
     @apply badge bg-yellow-100 text-yellow-700;
   }
 
+  .badge-amber {
+    @apply badge bg-amber-100 text-amber-700;
+  }
+
   .badge-gray {
     @apply badge bg-slate-100 text-slate-600;
   }

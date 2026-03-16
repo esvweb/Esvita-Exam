@@ -13,7 +13,18 @@ export interface SessionPayload {
   email: string;
   name: string;
   role: string;
+  teamId?: string; // for team_leader role
 }
+
+// Candidate (exam taker) session — separate from admin session
+export interface CandidateSessionPayload {
+  type: 'candidate';
+  audienceId: string;
+  email: string;
+  name: string;
+}
+
+const CANDIDATE_COOKIE = 'esvita_candidate';
 
 export async function createSession(payload: SessionPayload): Promise<string> {
   const token = await new SignJWT({ ...payload })
@@ -58,6 +69,45 @@ export function setSessionCookie(token: string) {
 
 export function clearSessionCookie() {
   cookies().delete(COOKIE_NAME);
+}
+
+// ── Candidate session (exam takers seeing their results) ─────────────────────
+
+export async function createCandidateSession(payload: CandidateSessionPayload): Promise<string> {
+  const token = await new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('24h')
+    .sign(SECRET);
+  return token;
+}
+
+export async function getCandidateSessionFromRequest(
+  req: NextRequest
+): Promise<CandidateSessionPayload | null> {
+  const token = req.cookies.get(CANDIDATE_COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, SECRET);
+    if (payload.type !== 'candidate') return null;
+    return payload as unknown as CandidateSessionPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function setCandidateSessionCookie(token: string) {
+  cookies().set(CANDIDATE_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24, // 24 hours
+    path: '/',
+  });
+}
+
+export function clearCandidateSessionCookie() {
+  cookies().delete(CANDIDATE_COOKIE);
 }
 
 // OTP generation

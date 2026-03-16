@@ -50,7 +50,8 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data.error || 'Invalid or expired code');
       } else {
-        window.location.href = '/dashboard';
+        // Use role-based redirect from API (team_leader → /team, others → /dashboard)
+        window.location.href = data.redirectTo || '/dashboard';
       }
     } catch {
       setError('Network error. Please try again.');

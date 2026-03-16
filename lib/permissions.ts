@@ -1,12 +1,13 @@
 import type { SessionPayload } from './auth';
 
 // Role hierarchy:
-// super_admin > admin > moderator > staff
+// super_admin > admin > moderator > team_leader > staff
 
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
   admin: 'Admin',
   moderator: 'Moderator',
+  team_leader: 'Team Leader',
   staff: 'Staff',
 };
 
@@ -14,6 +15,7 @@ export const ROLE_COLORS: Record<string, string> = {
   super_admin: 'badge-blue',
   admin: 'badge-purple',
   moderator: 'badge-green',
+  team_leader: 'badge-amber',
   staff: 'badge-gray',
 };
 
@@ -37,9 +39,19 @@ export function canInvite(session: SessionPayload): boolean {
   return ['super_admin', 'admin', 'moderator'].includes(session.role);
 }
 
-/** Read-only role */
+/** Read-only role (no write access at all) */
 export function isReadOnly(session: SessionPayload): boolean {
   return session.role === 'staff';
+}
+
+/** Team leader — can only view their own team results */
+export function isTeamLeader(session: SessionPayload): boolean {
+  return session.role === 'team_leader';
+}
+
+/** Can access admin management areas (not team_leader or staff) */
+export function isManager(session: SessionPayload): boolean {
+  return ['super_admin', 'admin', 'moderator'].includes(session.role);
 }
 
 /** Returns a 403 JSON response */

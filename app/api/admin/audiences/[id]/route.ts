@@ -17,7 +17,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       examSessions: {
         where: { status: 'completed' },
         include: {
-          exam: { select: { titleEn: true, titleTr: true, titleFra: true, titleRu: true, titleIta: true } },
+          exam: {
+            select: {
+              titleEn: true, titleTr: true, titleFra: true, titleRu: true, titleIta: true,
+              validityHours: true, validityStartedAt: true, resultsEmailSentAt: true,
+            },
+          },
         },
         orderBy: { completedAt: 'desc' },
       },
@@ -37,11 +42,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const audience = await prisma.audience.update({
     where: { id: params.id },
     data: {
-      ...(body.name && { name: body.name }),
-      ...(body.email && { email: body.email.toLowerCase() }),
-      ...(body.preferredLanguage && { preferredLanguage: body.preferredLanguage }),
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.email !== undefined && { email: body.email.toLowerCase() }),
+      ...(body.preferredLanguage !== undefined && { preferredLanguage: body.preferredLanguage }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.teamId !== undefined && { teamId: body.teamId || null }),
+      ...(body.nickname !== undefined && { nickname: body.nickname || null }),
+      ...(body.realName !== undefined && { realName: body.realName || null }),
     },
     include: {
       team: { select: { id: true, name: true, color: true } },
@@ -53,8 +60,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSessionFromRequest(req);
   if (!session) return apiError('Unauthorized', 401);
-  if (!canDelete(session)) return forbidden('Only Admins can deactivate candidates');
+  if (!canDelete(session)) return forbidden('Only Admins can delete candidates');
 
-  await prisma.audience.update({ where: { id: params.id }, data: { isActive: false } });
-  return apiSuccess({ message: 'Candidate deactivated' });
+  // Hard delete — nullify audienceId on sessions first to preserve history
+  await prisma.examSession.updateMany({
+    where: { audienceId: params.id },
+    data: { audienceId: null },
+  });
+
+  await prisma.audience.delete({ where: { id: params.id } });
+  return apiSuccess({ deleted: true });
 }

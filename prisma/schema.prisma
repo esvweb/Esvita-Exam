@@ -11,20 +11,24 @@ datasource db {
 
 // ─────────────────────────────────────────────
 // ADMIN USERS (Exam creators / administrators)
-// Roles: super_admin | admin | moderator | staff
+// Roles: super_admin | admin | moderator | team_leader | staff
 // ─────────────────────────────────────────────
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String
-  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "staff"
+  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "team_leader" | "staff"
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdExams      Exam[]           @relation("ExamCreator")
-  invitations       ExamInvitation[] @relation("InvitationCreator")
-  otpSessions       OtpSession[]
+  // For team_leader: which team they oversee
+  teamId String?
+  team   Team?   @relation("TeamLeaders", fields: [teamId], references: [id])
+
+  createdExams Exam[]           @relation("ExamCreator")
+  invitations  ExamInvitation[] @relation("InvitationCreator")
+  otpSessions  OtpSession[]
 
   @@map("users")
 }
@@ -40,9 +44,23 @@ model OtpSession {
   isUsed    Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user   User?   @relation(fields: [email], references: [email])
+  user User? @relation(fields: [email], references: [email])
 
   @@map("otp_sessions")
+}
+
+// ─────────────────────────────────────────────
+// CANDIDATE OTP SESSIONS (for candidate portal login)
+// ─────────────────────────────────────────────
+model CandidateOtpSession {
+  id        String   @id @default(cuid())
+  email     String
+  otpCode   String
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("candidate_otp_sessions")
 }
 
 // ─────────────────────────────────────────────
@@ -57,6 +75,7 @@ model Team {
   updatedAt DateTime @updatedAt
 
   members Audience[]
+  leaders User[]     @relation("TeamLeaders")
 
   @@map("teams")
 }
@@ -69,7 +88,10 @@ model Audience {
   name              String
   email             String   @unique
   preferredLanguage String   @default("EN") // EN | FRA | RU | TR | ITA
-  isActive          Boolean  @default(true)
+  isActive          Boolean  @default(true)  // false = passive/paused
+  isArchived        Boolean  @default(false) // true = reset (old record preserved)
+  nickname          String?  // company nickname (can be reused after reset)
+  realName          String?  // real legal name (used to distinguish after reset)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -98,15 +120,21 @@ model Exam {
   descriptionIta  String?
   timePerQuestion Int      @default(60)
   isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
-  createdBy   String
-  creator     User     @relation("ExamCreator", fields: [createdBy], references: [id])
+  // Validity & result scheduling
+  validityHours      Int       @default(72) // how long until results are sent after first invite
+  validityStartedAt  DateTime? // set when first invitation is sent/assigned
+  resultsEmailSentAt DateTime? // set when bulk results email is dispatched by cron
 
-  questions    Question[]
-  sessions     ExamSession[]
-  invitations  ExamInvitation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy String
+  creator   User   @relation("ExamCreator", fields: [createdBy], references: [id])
+
+  questions   Question[]
+  sessions    ExamSession[]
+  invitations ExamInvitation[]
 
   @@map("exams")
 }
@@ -115,9 +143,9 @@ model Exam {
 // QUESTIONS
 // ─────────────────────────────────────────────
 model Question {
-  id         String  @id @default(cuid())
+  id         String @id @default(cuid())
   examId     String
-  orderIndex Int     @default(0)
+  orderIndex Int    @default(0)
 
   questionEn  String?
   questionFra String?
@@ -142,7 +170,7 @@ model Question {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  exam    Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
   answers ExamAnswer[]
 
   @@map("questions")
@@ -163,8 +191,8 @@ model ExamInvitation {
   createdBy   String
   createdAt   DateTime @default(now())
 
-  exam     Exam         @relation(fields: [examId], references: [id])
-  creator  User         @relation("InvitationCreator", fields: [createdBy], references: [id])
+  exam    Exam        @relation(fields: [examId], references: [id])
+  creator User        @relation("InvitationCreator", fields: [createdBy], references: [id])
   sessions ExamSession[]
 
   @@map("exam_invitations")
@@ -174,16 +202,16 @@ model ExamInvitation {
 // EXAM SESSIONS
 // ─────────────────────────────────────────────
 model ExamSession {
-  id               String   @id @default(cuid())
-  examId           String
-  audienceId       String?
-  invitationId     String?
-  externalEmail    String?
-  externalName     String?
+  id            String  @id @default(cuid())
+  examId        String
+  audienceId    String?
+  invitationId  String?
+  externalEmail String?
+  externalName  String?
 
   selectedLanguage String
   questionOrder    String
-  startedAt        DateTime @default(now())
+  startedAt        DateTime  @default(now())
   completedAt      DateTime?
   score            Int?
   totalQuestions   Int?
@@ -191,7 +219,9 @@ model ExamSession {
   wrongCount       Int?
   skippedCount     Int?
   timeTaken        Int?
-  status           String   @default("in_progress")
+  status           String    @default("in_progress")
+
+  completionEmailSent Boolean @default(false) // completion confirmation email sent
 
   exam       Exam            @relation(fields: [examId], references: [id])
   audience   Audience?       @relation(fields: [audienceId], references: [id])

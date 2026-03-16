@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const {
     titleEn, titleFra, titleRu, titleTr, titleIta,
     descriptionEn, descriptionFra, descriptionRu, descriptionTr, descriptionIta,
-    timePerQuestion,
+    timePerQuestion, validityHours,
   } = body;
 
   if (!titleEn && !titleTr && !titleFra && !titleRu && !titleIta) {
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       descriptionRu: descriptionRu || null, descriptionTr: descriptionTr || null,
       descriptionIta: descriptionIta || null,
       timePerQuestion: timePerQuestion || 60,
+      validityHours: validityHours || 72,
       createdBy: session.userId,
     },
   });

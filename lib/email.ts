@@ -259,3 +259,126 @@ export async function sendExamResult(data: ExamResultData) {
     html,
   });
 }
+
+// ─── Exam Completion Confirmation (results pending) ───────────────────────────
+export async function sendCompletionConfirmation(
+  email: string,
+  name: string,
+  examTitle: string,
+  resultsDate: Date
+) {
+  const resultsDateStr = resultsDate.toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: 'Inter', Arial, sans-serif; background: #f8fafc; margin: 0; padding: 20px; }
+        .container { max-width: 560px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.07); }
+        .header { background: linear-gradient(135deg, #059669 0%, #10b981 100%); padding: 32px; text-align: center; }
+        .header h1 { color: white; margin: 0; font-size: 22px; font-weight: 700; }
+        .body { padding: 32px; }
+        .check-icon { font-size: 64px; text-align: center; margin: 16px 0; }
+        .exam-box { background: #f0fdf4; border-left: 4px solid #059669; border-radius: 6px; padding: 16px 20px; margin: 20px 0; }
+        .exam-title { font-weight: 700; color: #059669; font-size: 16px; }
+        .date-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px 20px; margin: 20px 0; text-align: center; }
+        .date-label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+        .date-value { font-size: 16px; font-weight: 700; color: #1e40af; }
+        .portal-box { background: #f8fafc; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center; }
+        .footer { background: #f8fafc; padding: 16px 32px; text-align: center; font-size: 12px; color: #94a3b8; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Esvita Exam System</h1>
+          <p style="color:rgba(255,255,255,0.9); margin:8px 0 0;">Exam Completed Successfully</p>
+        </div>
+        <div class="body">
+          <div class="check-icon">✅</div>
+          <p>Dear <strong>${name}</strong>,</p>
+          <p>You have successfully completed the following exam:</p>
+          <div class="exam-box">
+            <div class="exam-title">${examTitle}</div>
+          </div>
+          <p style="color:#64748b;">Your answers have been recorded. Results will be shared with all participants simultaneously once the exam session closes.</p>
+          <div class="date-box">
+            <div class="date-label">Results will be available on</div>
+            <div class="date-value">${resultsDateStr} UTC</div>
+          </div>
+          <div class="portal-box">
+            <p style="margin:0 0 8px; font-size:13px; color:#64748b;">You can check your results after the release date at:</p>
+            <a href="${APP_URL}/results" style="color:#0052CC; font-weight:600; font-size:14px;">${APP_URL}/results</a>
+          </div>
+          <p style="font-size:13px; color:#94a3b8;">If you have any questions, please contact your administrator.</p>
+        </div>
+        <div class="footer">
+          &copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System<br>
+          This is an automated message. Please do not reply.
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await getTransporter().sendMail({
+    from: FROM,
+    to: email,
+    subject: `[Esvita Exam] Completed: ${examTitle} — Results pending`,
+    html,
+  });
+}
+
+// ─── Candidate Portal OTP ─────────────────────────────────────────────────────
+export async function sendCandidateOTP(email: string, name: string, otp: string) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: 'Inter', Arial, sans-serif; background: #f8fafc; margin: 0; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.07); }
+        .header { background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); padding: 32px; text-align: center; }
+        .header h1 { color: white; margin: 0; font-size: 22px; font-weight: 700; }
+        .body { padding: 32px; }
+        .otp-box { background: #faf5ff; border: 2px dashed #7c3aed; border-radius: 10px; text-align: center; padding: 24px; margin: 24px 0; }
+        .otp-code { font-size: 42px; font-weight: 800; color: #7c3aed; letter-spacing: 10px; font-family: monospace; }
+        .footer { background: #f8fafc; padding: 16px 32px; text-align: center; font-size: 12px; color: #94a3b8; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Esvita Exam System</h1>
+          <p style="color:rgba(255,255,255,0.9); margin:8px 0 0;">Result Portal Access</p>
+        </div>
+        <div class="body">
+          <p>Hello <strong>${name}</strong>,</p>
+          <p>Your one-time code to access the exam results portal:</p>
+          <div class="otp-box">
+            <div class="otp-code">${otp}</div>
+            <div style="font-size:12px; color:#94a3b8; margin-top:8px;">Valid for 10 minutes</div>
+          </div>
+          <p style="color:#64748b; font-size:14px;">If you did not request this code, please ignore this email.</p>
+        </div>
+        <div class="footer">
+          &copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await getTransporter().sendMail({
+    from: FROM,
+    to: email,
+    subject: `[Esvita Exam] Your results portal code: ${otp}`,
+    html,
+  });
+}

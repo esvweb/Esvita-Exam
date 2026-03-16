@@ -2,9 +2,8 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
-import { apiError, apiSuccess, calculateScore } from '@/lib/utils';
-import { sendExamResult } from '@/lib/email';
-import type { ExamResultData } from '@/lib/email';
+import { apiError, apiSuccess, calculateScore, addHours } from '@/lib/utils';
+import { sendCompletionConfirmation } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
   const { sessionId, timeTaken } = await req.json();
@@ -31,17 +30,20 @@ export async function POST(req: NextRequest) {
   const skippedCount = totalQuestions - session.answers.length;
   const score = calculateScore(correctCount, totalQuestions);
 
-  // Update session
+  const now = new Date();
+
+  // Update session to completed
   await prisma.examSession.update({
     where: { id: sessionId },
     data: {
       status: 'completed',
-      completedAt: new Date(),
+      completedAt: now,
       score,
       correctCount,
       wrongCount,
       skippedCount,
       timeTaken: timeTaken || null,
+      completionEmailSent: false, // will be set true after email send below
     },
   });
 
@@ -53,64 +55,37 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Build result data for email
-  const lang = session.selectedLanguage;
-  const langSuffix = lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
+  // Set validityStartedAt on the exam if not already set (first completion)
+  if (!session.exam.validityStartedAt) {
+    await prisma.exam.update({
+      where: { id: session.examId },
+      data: { validityStartedAt: now },
+    });
+  }
 
-  const wrongAnswers = await prisma.examAnswer.findMany({
-    where: { sessionId, isCorrect: false, selectedAnswer: { not: null } },
-    include: { question: true },
-  });
-
-  const skippedAnswers: typeof wrongAnswers = [];
-  // Include questions not answered at all
-  const questionOrder: string[] = JSON.parse(session.questionOrder);
-  const answeredIds = new Set(session.answers.map((a) => a.questionId));
-  const skippedQuestions = session.exam.questions.filter((q) => !answeredIds.has(q.id));
-
-  const wrongAnswerData = wrongAnswers.map((a) => {
-    const q = a.question;
-    const qText = (q as Record<string, unknown>)[`question${langSuffix}`] as string || q.questionEn || '';
-    const expText = (q as Record<string, unknown>)[`explanation${langSuffix}`] as string || q.explanationEn || '';
-    const optsRaw = (q as Record<string, unknown>)[`options${langSuffix}`] as string || q.optionsEn || '[]';
-    let opts: { key: string; value: string }[] = [];
-    try { opts = JSON.parse(optsRaw); } catch {}
-    const correctOpt = opts.find((o) => o.key === q.correctAnswer);
-    const selectedOpt = opts.find((o) => o.key === a.selectedAnswer);
-
-    return {
-      questionText: qText,
-      selectedAnswer: selectedOpt ? `${selectedOpt.key}. ${selectedOpt.value}` : a.selectedAnswer || 'Not answered',
-      correctAnswer: correctOpt ? `${correctOpt.key}. ${correctOpt.value}` : q.correctAnswer,
-      explanation: expText,
-    };
-  });
+  // Compute when results will be released
+  const validityStart = session.exam.validityStartedAt ?? now;
+  const resultsDate = addHours(validityStart, session.exam.validityHours);
 
   const candidateEmail = session.audience?.email || session.externalEmail || '';
   const candidateName = session.audience?.name || session.externalName || 'Candidate';
+  const lang = session.selectedLanguage;
+  const langSuffix = lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
   const examTitle = (session.exam as Record<string, unknown>)[`title${langSuffix}`] as string
     || session.exam.titleEn || 'Exam';
 
-  // Send result email
+  // Send completion confirmation email (NOT result — result comes from cron after validity expires)
   if (candidateEmail) {
     try {
-      const emailData: ExamResultData = {
-        candidateName,
-        candidateEmail,
-        examTitle,
-        score,
-        totalQuestions,
-        correctCount,
-        wrongCount,
-        skippedCount,
-        language: lang,
-        wrongAnswers: wrongAnswerData,
-      };
-      await sendExamResult(emailData);
+      await sendCompletionConfirmation(candidateEmail, candidateName, examTitle, resultsDate);
+      await prisma.examSession.update({
+        where: { id: sessionId },
+        data: { completionEmailSent: true },
+      });
     } catch (emailErr) {
-      console.error('Failed to send result email:', emailErr);
+      console.error('Failed to send completion confirmation email:', emailErr);
       if (process.env.NODE_ENV === 'development') {
-        console.log(`\n📊 DEV RESULT for ${candidateEmail}: Score=${score}%\n`);
+        console.log(`\n📧 DEV COMPLETION for ${candidateEmail}: Score=${score}%, Results at ${resultsDate.toISOString()}\n`);
       }
     }
   }
@@ -124,5 +99,6 @@ export async function POST(req: NextRequest) {
     skippedCount,
     candidateName,
     examTitle,
+    resultsDate: resultsDate.toISOString(),
   });
 }

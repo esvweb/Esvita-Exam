@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, UserSquare2, ClipboardList,
   BarChart3, LogOut, GraduationCap, Users2, Shield,
-  UserCheck, Briefcase, Eye,
+  UserCheck, Briefcase, Eye, UsersRound,
 } from 'lucide-react';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/permissions';
 
@@ -13,14 +13,31 @@ interface Props {
   role: string;
   userName: string;
   userEmail: string;
+  teamId?: string;
 }
 
 const ROLE_ICONS: Record<string, React.ElementType> = {
   super_admin: Shield,
   admin: UserCheck,
   moderator: Briefcase,
+  team_leader: UsersRound,
   staff: Eye,
 };
+
+// Nav items visible to team_leader only (limited view)
+const TEAM_LEADER_NAV = [
+  { href: '/team', icon: UsersRound, label: 'My Team' },
+];
+
+// Full nav items for admins/mods/staff
+const ADMIN_NAV = [
+  { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',       roles: null },
+  { href: '/exams',      icon: ClipboardList,   label: 'Exams',           roles: null },
+  { href: '/audiences',  icon: UserSquare2,     label: 'Candidates',      roles: null },
+  { href: '/teams',      icon: Users2,          label: 'Teams',           roles: null },
+  { href: '/reports',    icon: BarChart3,       label: 'Reports',         roles: null },
+  { href: '/users',      icon: Users,           label: 'User Management', roles: ['super_admin'] },
+];
 
 export default function Sidebar({ role, userName, userEmail }: Props) {
   const pathname = usePathname();
@@ -30,21 +47,20 @@ export default function Sidebar({ role, userName, userEmail }: Props) {
     window.location.href = '/login';
   };
 
-  const navItems = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: null },
-    { href: '/exams', icon: ClipboardList, label: 'Exams', roles: null },
-    { href: '/audiences', icon: UserSquare2, label: 'Candidates', roles: null },
-    { href: '/teams', icon: Users2, label: 'Teams', roles: null },
-    { href: '/reports', icon: BarChart3, label: 'Reports', roles: null },
-    { href: '/users', icon: Users, label: 'User Management', roles: ['super_admin'] },
-  ];
-
-  const visibleNav = navItems.filter(
-    item => !item.roles || item.roles.includes(role)
-  );
+  const isTeamLeader = role === 'team_leader';
+  const navItems = isTeamLeader
+    ? TEAM_LEADER_NAV
+    : ADMIN_NAV.filter(item => !item.roles || item.roles.includes(role));
 
   const RoleIcon = ROLE_ICONS[role] || UserCheck;
   const initials = userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+  const roleBadgeClass =
+    role === 'super_admin' ? 'bg-blue-100 text-blue-700' :
+    role === 'admin'       ? 'bg-purple-100 text-purple-700' :
+    role === 'moderator'   ? 'bg-emerald-100 text-emerald-700' :
+    role === 'team_leader' ? 'bg-amber-100 text-amber-700' :
+    'bg-slate-100 text-slate-600';
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 flex flex-col z-40">
@@ -69,12 +85,7 @@ export default function Sidebar({ role, userName, userEmail }: Props) {
           </div>
           <div className="min-w-0">
             <p className="text-xs font-semibold text-slate-800 truncate">{userName}</p>
-            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 ${
-              role === 'super_admin' ? 'bg-blue-100 text-blue-700' :
-              role === 'admin' ? 'bg-purple-100 text-purple-700' :
-              role === 'moderator' ? 'bg-emerald-100 text-emerald-700' :
-              'bg-slate-100 text-slate-600'
-            }`}>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 ${roleBadgeClass}`}>
               <RoleIcon size={9} />
               {ROLE_LABELS[role] || role}
             </span>
@@ -88,7 +99,7 @@ export default function Sidebar({ role, userName, userEmail }: Props) {
           Navigation
         </p>
         <ul className="space-y-0.5">
-          {visibleNav.map((item) => {
+          {navItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <li key={item.href}>

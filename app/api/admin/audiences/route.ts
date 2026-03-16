@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!session) return apiError('Unauthorized', 401);
   if (!canWrite(session)) return forbidden();
 
-  const { name, email, preferredLanguage, teamId } = await req.json();
+  const { name, email, preferredLanguage, teamId, nickname, realName } = await req.json();
   if (!name || !email) return apiError('Name and email are required');
 
   const existing = await prisma.audience.findUnique({ where: { email: email.toLowerCase() } });
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       preferredLanguage: preferredLanguage || 'EN',
+      nickname: nickname?.trim() || null,
+      realName: realName?.trim() || null,
       ...(teamId && { teamId }),
     },
     include: {
