@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
 import { apiError, apiSuccess, shuffleArray, isExpired } from '@/lib/utils';
