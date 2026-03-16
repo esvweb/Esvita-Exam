@@ -116,6 +116,56 @@ export function parseQuestionsFromJSON(jsonStr: string): Array<Record<string, un
 }
 
 /**
+ * Preprocess markdown / freeform text to the canonical
+ * Q:/A:/B:/C:/D:/ANSWER:/EXPLANATION: format so the
+ * existing parseQuestionsFromText() parser can handle it.
+ *
+ * Supported input styles:
+ *   ## Question text        →  Q: Question text
+ *   - A) option / A: opt    →  A: option
+ *   **Answer:** B           →  ANSWER: B
+ *   **Explanation:** …      →  EXPLANATION: …
+ *   --- separator           →  blank line
+ */
+export function preprocessMarkdown(text: string): string {
+  return text
+    .split('\n')
+    .map((raw) => {
+      const line = raw.trim();
+
+      // Markdown heading → Q:
+      if (/^#{1,3}\s+/.test(line)) {
+        return 'Q: ' + line.replace(/^#{1,3}\s+/, '').replace(/\*\*/g, '').trim();
+      }
+
+      // Bullet option "- A: ..." or "- A) ..." or "A) ..."
+      const optMatch = line.match(/^[-*]?\s*([ABCD])[):]\s*(.*)/i);
+      if (optMatch) {
+        return `${optMatch[1].toUpperCase()}: ${optMatch[2].replace(/\*\*/g, '').trim()}`;
+      }
+
+      // **Answer:** B  or  ANSWER: B
+      if (/^\*{0,2}answers?\*{0,2}\s*[:]\s*/i.test(line)) {
+        const val = line.replace(/^\*{0,2}answers?\*{0,2}\s*[:]\s*/i, '').replace(/\*\*/g, '').trim();
+        return 'ANSWER: ' + val;
+      }
+
+      // **Explanation:** …  or  EXPLANATION: …
+      if (/^\*{0,2}explanations?\*{0,2}\s*[:]\s*/i.test(line)) {
+        const val = line.replace(/^\*{0,2}explanations?\*{0,2}\s*[:]\s*/i, '').replace(/\*\*/g, '').trim();
+        return 'EXPLANATION: ' + val;
+      }
+
+      // --- separator → blank line
+      if (/^---+$/.test(line)) return '';
+
+      // Pass through (strip stray markdown bold/italic)
+      return line.replace(/\*\*/g, '').replace(/^[*_]+|[*_]+$/g, '');
+    })
+    .join('\n');
+}
+
+/**
  * Attempt to extract text from a Buffer (simulated PDF parsing).
  * In production, use the `pdf-parse` library:
  *   import pdfParse from 'pdf-parse';

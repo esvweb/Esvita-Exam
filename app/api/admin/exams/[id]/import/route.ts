@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getSessionFromRequest } from '@/lib/auth';
 import { apiError, apiSuccess } from '@/lib/utils';
-import { extractTextFromPDF, parseQuestionsFromText, parseQuestionsFromJSON } from '@/lib/pdf';
+import { extractTextFromPDF, parseQuestionsFromText, parseQuestionsFromJSON, preprocessMarkdown } from '@/lib/pdf';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSessionFromRequest(req);
@@ -24,14 +24,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       explanationEn?: string; explanationTr?: string;
     }> = [];
 
+    let replaceAll = false;
+
     if (contentType.includes('application/json')) {
-      // JSON bulk import
       const body = await req.json();
+      replaceAll = body.replace === true;
+
       if (body.type === 'json' && body.data) {
         parsedQuestions = parseQuestionsFromJSON(body.data) as typeof parsedQuestions;
       } else if (body.type === 'text' && body.data) {
-        // Plain text format
         const rawParsed = parseQuestionsFromText(body.data);
+        parsedQuestions = rawParsed.map((q) => ({
+          questionEn: q.questionText,
+          optionsEn: q.options,
+          correctAnswer: q.correctAnswer,
+          explanationEn: q.explanation,
+        }));
+      } else if (body.type === 'markdown' && body.data) {
+        const processed = preprocessMarkdown(body.data);
+        const rawParsed = parseQuestionsFromText(processed);
         parsedQuestions = rawParsed.map((q) => ({
           questionEn: q.questionText,
           optionsEn: q.options,
@@ -40,9 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }));
       }
     } else if (contentType.includes('multipart/form-data')) {
-      // PDF upload
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
+      replaceAll = formData.get('replace') === 'true';
       if (!file) return apiError('No file uploaded');
 
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -51,10 +62,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const text = await extractTextFromPDF(buffer);
         const rawParsed = parseQuestionsFromText(text);
         parsedQuestions = rawParsed.map((q) => ({
-          questionEn: q.questionText,
-          optionsEn: q.options,
-          correctAnswer: q.correctAnswer,
-          explanationEn: q.explanation,
+          questionEn: q.questionText, optionsEn: q.options,
+          correctAnswer: q.correctAnswer, explanationEn: q.explanation,
         }));
       } else if (file.name.endsWith('.json')) {
         const text = new TextDecoder().decode(buffer);
@@ -63,13 +72,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const text = new TextDecoder().decode(buffer);
         const rawParsed = parseQuestionsFromText(text);
         parsedQuestions = rawParsed.map((q) => ({
-          questionEn: q.questionText,
-          optionsEn: q.options,
-          correctAnswer: q.correctAnswer,
-          explanationEn: q.explanation,
+          questionEn: q.questionText, optionsEn: q.options,
+          correctAnswer: q.correctAnswer, explanationEn: q.explanation,
+        }));
+      } else if (file.name.endsWith('.md')) {
+        const text = new TextDecoder().decode(buffer);
+        const processed = preprocessMarkdown(text);
+        const rawParsed = parseQuestionsFromText(processed);
+        parsedQuestions = rawParsed.map((q) => ({
+          questionEn: q.questionText, optionsEn: q.options,
+          correctAnswer: q.correctAnswer, explanationEn: q.explanation,
         }));
       } else {
-        return apiError('Unsupported file type. Use PDF, JSON, or TXT.');
+        return apiError('Unsupported file type. Use PDF, TXT, MD, or JSON.');
       }
     }
 
@@ -77,8 +92,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return apiError('No valid questions found in the provided data');
     }
 
-    // Get current count for ordering
-    const existingCount = await prisma.question.count({ where: { examId: params.id } });
+    // Replace mode: delete all existing questions first
+    if (replaceAll) {
+      await prisma.question.deleteMany({ where: { examId: params.id } });
+    }
+
+    const existingCount = replaceAll
+      ? 0
+      : await prisma.question.count({ where: { examId: params.id } });
 
     const created = await prisma.$transaction(
       parsedQuestions.map((q, i) =>

@@ -48,6 +48,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!session) return apiError('Unauthorized', 401);
   if (!canDelete(session)) return forbidden('Only Admins can delete exams');
 
-  await prisma.exam.update({ where: { id: params.id }, data: { isActive: false } });
-  return apiSuccess({ message: 'Exam deactivated' });
+  const exam = await prisma.exam.findUnique({ where: { id: params.id } });
+  if (!exam) return apiError('Exam not found', 404);
+
+  // Cascade: ExamAnswers → ExamSessions → ExamInvitations → Exam (Questions cascade from Exam)
+  await prisma.$transaction([
+    prisma.examAnswer.deleteMany({ where: { session: { examId: params.id } } }),
+    prisma.examSession.deleteMany({ where: { examId: params.id } }),
+    prisma.examInvitation.deleteMany({ where: { examId: params.id } }),
+    prisma.exam.delete({ where: { id: params.id } }),
+  ]);
+
+  return apiSuccess({ deleted: true });
 }
