@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// ADMIN USERS (Exam creators / administrators)
+// Roles: super_admin | admin | moderator | staff
+// ─────────────────────────────────────────────
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "staff"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdExams      Exam[]           @relation("ExamCreator")
+  invitations       ExamInvitation[] @relation("InvitationCreator")
+  otpSessions       OtpSession[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// OTP SESSIONS (for admin login)
+// ─────────────────────────────────────────────
+model OtpSession {
+  id        String   @id @default(cuid())
+  email     String
+  otpCode   String
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user   User?   @relation(fields: [email], references: [email])
+
+  @@map("otp_sessions")
+}
+
+// ─────────────────────────────────────────────
+// TEAMS (Group for organizing audiences)
+// ─────────────────────────────────────────────
+model Team {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#3B82F6")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members Audience[]
+
+  @@map("teams")
+}
+
+// ─────────────────────────────────────────────
+// AUDIENCES (Medical Advisors / Candidates)
+// ─────────────────────────────────────────────
+model Audience {
+  id                String   @id @default(cuid())
+  name              String
+  email             String   @unique
+  preferredLanguage String   @default("EN") // EN | FRA | RU | TR | ITA
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id])
+
+  examSessions ExamSession[]
+
+  @@map("audiences")
+}
+
+// ─────────────────────────────────────────────
+// EXAMS
+// ─────────────────────────────────────────────
+model Exam {
+  id              String   @id @default(cuid())
+  titleEn         String?
+  titleFra        String?
+  titleRu         String?
+  titleTr         String?
+  titleIta        String?
+  descriptionEn   String?
+  descriptionFra  String?
+  descriptionRu   String?
+  descriptionTr   String?
+  descriptionIta  String?
+  timePerQuestion Int      @default(60)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy   String
+  creator     User     @relation("ExamCreator", fields: [createdBy], references: [id])
+
+  questions    Question[]
+  sessions     ExamSession[]
+  invitations  ExamInvitation[]
+
+  @@map("exams")
+}
+
+// ─────────────────────────────────────────────
+// QUESTIONS
+// ─────────────────────────────────────────────
+model Question {
+  id         String  @id @default(cuid())
+  examId     String
+  orderIndex Int     @default(0)
+
+  questionEn  String?
+  questionFra String?
+  questionRu  String?
+  questionTr  String?
+  questionIta String?
+
+  optionsEn  String?
+  optionsFra String?
+  optionsRu  String?
+  optionsTr  String?
+  optionsIta String?
+
+  correctAnswer String
+
+  explanationEn  String?
+  explanationFra String?
+  explanationRu  String?
+  explanationTr  String?
+  explanationIta String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  exam    Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers ExamAnswer[]
+
+  @@map("questions")
+}
+
+// ─────────────────────────────────────────────
+// EXAM INVITATIONS
+// ─────────────────────────────────────────────
+model ExamInvitation {
+  id          String   @id @default(cuid())
+  examId      String
+  email       String
+  name        String?
+  uniqueToken String   @unique @default(cuid())
+  otpCode     String?
+  expiresAt   DateTime
+  isUsed      Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  exam     Exam         @relation(fields: [examId], references: [id])
+  creator  User         @relation("InvitationCreator", fields: [createdBy], references: [id])
+  sessions ExamSession[]
+
+  @@map("exam_invitations")
+}
+
+// ─────────────────────────────────────────────
+// EXAM SESSIONS
+// ─────────────────────────────────────────────
+model ExamSession {
+  id               String   @id @default(cuid())
+  examId           String
+  audienceId       String?
+  invitationId     String?
+  externalEmail    String?
+  externalName     String?
+
+  selectedLanguage String
+  questionOrder    String
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+  score            Int?
+  totalQuestions   Int?
+  correctCount     Int?
+  wrongCount       Int?
+  skippedCount     Int?
+  timeTaken        Int?
+  status           String   @default("in_progress")
+
+  exam       Exam            @relation(fields: [examId], references: [id])
+  audience   Audience?       @relation(fields: [audienceId], references: [id])
+  invitation ExamInvitation? @relation(fields: [invitationId], references: [id])
+  answers    ExamAnswer[]
+
+  @@map("exam_sessions")
+}
+
+// ─────────────────────────────────────────────
+// EXAM ANSWERS
+// ─────────────────────────────────────────────
+model ExamAnswer {
+  id             String   @id @default(cuid())
+  sessionId      String
+  questionId     String
+  selectedAnswer String?
+  isCorrect      Boolean?
+  answeredAt     DateTime @default(now())
+
+  session  ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@map("exam_answers")
+}
