@@ -6,7 +6,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import {
   ClipboardList, Plus, RefreshCw, Clock, Users,
-  ArrowRight, CheckCircle2, HelpCircle
+  ArrowRight, CheckCircle2, HelpCircle, FileUp,
 } from 'lucide-react';
 import Link from 'next/link';
 import Spinner from '@/components/ui/Spinner';
@@ -50,6 +50,9 @@ export default function ExamsPage() {
           </div>
           <div className="flex gap-2">
             <button onClick={fetchExams} className="btn-secondary btn-sm"><RefreshCw size={14} /></button>
+            <Link href="/exams/create-from-file" className="btn-secondary btn-sm">
+              <FileUp size={14} /> Create from File
+            </Link>
             <Link href="/exams/create" className="btn-primary btn-sm">
               <Plus size={14} /> Create New Exam
             </Link>

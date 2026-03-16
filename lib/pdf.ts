@@ -166,6 +166,71 @@ export function preprocessMarkdown(text: string): string {
 }
 
 /**
+ * Parse exam metadata + questions from a full exam file.
+ *
+ * Expected file structure:
+ *
+ * # EXAM
+ * TITLE_EN: Exam Title in English
+ * TITLE_TR: Sınav Başlığı
+ * TITLE_FRA: Titre de l'examen
+ * TITLE_RU: Название экзамена
+ * TITLE_ITA: Titolo dell'esame
+ * DESC_EN: Optional description in English
+ * DESC_TR: İsteğe bağlı açıklama
+ * DESC_FRA: Description facultative
+ * DESC_RU: Необязательное описание
+ * DESC_ITA: Descrizione facoltativa
+ *
+ * # QUESTIONS
+ *
+ * Q: Question text?
+ * A: Option A
+ * B: Option B
+ * ...
+ * ANSWER: A
+ * EXPLANATION: Optional explanation
+ */
+export interface ExamFileMetadata {
+  titleEn: string; titleTr: string; titleFra: string; titleRu: string; titleIta: string;
+  descriptionEn: string; descriptionTr: string; descriptionFra: string;
+  descriptionRu: string; descriptionIta: string;
+  questions: ParsedQuestion[];
+}
+
+export function parseExamFile(text: string): ExamFileMetadata {
+  const get = (key: string): string => {
+    const m = text.match(new RegExp(`^${key}\\s*:\\s*(.+)`, 'im'));
+    return m ? m[1].trim() : '';
+  };
+
+  // Extract questions section (after # QUESTIONS header if present)
+  const questionsSection = text.match(/^#\s*QUESTIONS?[\s\S]*/im)?.[0] || text;
+
+  // Auto-detect markdown format and preprocess if needed
+  const isMarkdown =
+    /^#{1,3}\s+/m.test(questionsSection) ||
+    /\*\*answer\*\*/i.test(questionsSection) ||
+    /^[-*]\s*[ABCD][):]/m.test(questionsSection);
+  const processedText = isMarkdown ? preprocessMarkdown(questionsSection) : questionsSection;
+  const questions = parseQuestionsFromText(processedText);
+
+  return {
+    titleEn:  get('TITLE_EN'),
+    titleTr:  get('TITLE_TR'),
+    titleFra: get('TITLE_FRA'),
+    titleRu:  get('TITLE_RU'),
+    titleIta: get('TITLE_ITA'),
+    descriptionEn:  get('DESC_EN'),
+    descriptionTr:  get('DESC_TR'),
+    descriptionFra: get('DESC_FRA'),
+    descriptionRu:  get('DESC_RU'),
+    descriptionIta: get('DESC_ITA'),
+    questions,
+  };
+}
+
+/**
  * Attempt to extract text from a Buffer (simulated PDF parsing).
  * In production, use the `pdf-parse` library:
  *   import pdfParse from 'pdf-parse';
