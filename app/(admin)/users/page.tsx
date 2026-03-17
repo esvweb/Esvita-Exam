@@ -35,88 +35,21 @@ interface Audience {
 }
 type StatusFilter = 'active' | 'passive' | 'archived' | 'all';
 
-/* ─────────── Constants ─────────── */
-const ROLES = [
+/* ─────────── Roles ─────────── */
+const USER_ROLES = [
   { value: 'super_admin', label: 'Super Admin', desc: 'Full system access including user management' },
   { value: 'admin',       label: 'Admin',       desc: 'Full access except user management' },
   { value: 'moderator',   label: 'Moderator',   desc: 'Can manage exams, teams and audience — no delete access' },
   { value: 'team_leader', label: 'Team Leader', desc: "Can view their team's exam results only (must be assigned a team)" },
   { value: 'staff',       label: 'Staff',       desc: 'Read-only access to all sections (administrative office staff)' },
   { value: 'advisor',     label: 'Advisor',     desc: 'Sees only their own exam scores on the Exams page (medical sales team)' },
+  { value: 'candidate',   label: 'Exam Candidate', desc: 'Exam candidate — can be invited to exams. Appears in System Users as audience member.' },
 ];
 const MANAGER_ROLES     = ['super_admin', 'admin', 'moderator', 'team_leader'];
 const SYSTEM_USER_ROLES = ['staff', 'advisor'];
 
-/* ─────────── UserTable Sub-component ─────────── */
-function UserTable({
-  users, currentUserId, roleIconMap, onEdit, onDelete,
-}: {
-  users: User[];
-  currentUserId: string;
-  roleIconMap: Record<string, React.ReactNode>;
-  onEdit: (u: User) => void;
-  onDelete: (u: User) => void;
-}) {
-  return (
-    <div className="table-container">
-      <table className="table">
-        <thead>
-          <tr><th>Name</th><th>Email</th><th>Role</th><th>Team</th><th>Status</th><th>Joined</th><th></th></tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.id}>
-              <td>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
-                    {user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-800">{user.name}</p>
-                    {user.id === currentUserId && <p className="text-[10px] text-blue-500">You</p>}
-                  </div>
-                </div>
-              </td>
-              <td><div className="flex items-center gap-1.5 text-slate-500"><Mail size={13} />{user.email}</div></td>
-              <td>
-                <span className={`badge ${ROLE_COLORS[user.role] || 'badge-gray'}`}>
-                  {roleIconMap[user.role]}
-                  {ROLE_LABELS[user.role] || user.role}
-                </span>
-              </td>
-              <td>
-                {user.team ? (
-                  <span className="flex items-center gap-1.5 text-xs text-slate-600">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: user.team.color }} />
-                    {user.team.name}
-                  </span>
-                ) : <span className="text-slate-400 text-xs">—</span>}
-              </td>
-              <td>{user.isActive ? <span className="badge-green">Active</span> : <span className="badge-red">Inactive</span>}</td>
-              <td className="text-slate-400 text-xs">{formatDateTime(user.createdAt)}</td>
-              <td>
-                <div className="flex gap-1">
-                  <button onClick={() => onEdit(user)} className="btn-ghost btn-sm p-1.5" title="Edit">
-                    <Pencil size={13} />
-                  </button>
-                  {user.id !== currentUserId && (
-                    <button onClick={() => onDelete(user)}
-                      className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Delete">
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /* ─────────── Audience status badge ─────────── */
-function statusBadge(a: Audience) {
+function audStatusBadge(a: Audience) {
   if (a.isArchived) return <span className="badge-gray text-xs">Archived</span>;
   if (a.isActive)   return <span className="badge-green text-xs">Active</span>;
   return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Passive</span>;
@@ -127,35 +60,34 @@ export default function UsersPage() {
   const { success, error } = useToast();
 
   /* ── User state ── */
-  const [users, setUsers]               = useState<User[]>([]);
-  const [teams, setTeams]               = useState<Team[]>([]);
-  const [currentUserId, setCurrentUserId]     = useState('');
-  const [currentUserRole, setCurrentUserRole] = useState('');
-  const [loading, setLoading]           = useState(true);
-  const [showUserModal, setShowUserModal]   = useState(false);
-  const [editUser, setEditUser]         = useState<User | null>(null);
-  const [savingUser, setSavingUser]     = useState(false);
-  const [userForm, setUserForm]         = useState({ name: '', email: '', role: 'staff', teamId: '' });
+  const [users, setUsers]                       = useState<User[]>([]);
+  const [teams, setTeams]                       = useState<Team[]>([]);
+  const [currentUserId, setCurrentUserId]       = useState('');
+  const [currentUserRole, setCurrentUserRole]   = useState('');
+  const [loading, setLoading]                   = useState(true);
+  const [showUserModal, setShowUserModal]       = useState(false);
+  const [editUser, setEditUser]                 = useState<User | null>(null);
+  const [savingUser, setSavingUser]             = useState(false);
+  const [userForm, setUserForm]                 = useState({
+    name: '', email: '', role: 'staff', teamId: '',
+    // Candidate-specific fields
+    nickname: '', realName: '', preferredLanguage: 'EN',
+  });
   const [deleteUserTarget, setDeleteUserTarget] = useState<User | null>(null);
-  const [deletingUser, setDeletingUser] = useState(false);
+  const [deletingUser, setDeletingUser]         = useState(false);
 
   /* ── Audience state ── */
-  const [audiences, setAudiences]         = useState<Audience[]>([]);
-  const [audienceLoading, setAudienceLoading] = useState(true);
-  const [search, setSearch]               = useState('');
-  const [filterTeam, setFilterTeam]       = useState('');
-  const [filterStatus, setFilterStatus]   = useState<StatusFilter>('active');
-  const [showAddAudience, setShowAddAudience] = useState(false);
-  const [audForm, setAudForm]             = useState({
-    name: '', email: '', preferredLanguage: 'EN', teamId: '', nickname: '', realName: '',
-  });
-  const [savingAud, setSavingAud]         = useState(false);
-  const [resetTarget, setResetTarget]     = useState<Audience | null>(null);
-  const [resetForm, setResetForm]         = useState({ newRealName: '', newEmail: '' });
-  const [resetting, setResetting]         = useState(false);
-  const [deleteAudTarget, setDeleteAudTarget] = useState<Audience | null>(null);
-  const [deletingAud, setDeletingAud]     = useState(false);
-  const [toggling, setToggling]           = useState<string | null>(null);
+  const [audiences, setAudiences]               = useState<Audience[]>([]);
+  const [audienceLoading, setAudienceLoading]   = useState(true);
+  const [sysSearch, setSysSearch]               = useState('');
+  const [filterTeam, setFilterTeam]             = useState('');
+  const [filterStatus, setFilterStatus]         = useState<StatusFilter>('active');
+  const [toggling, setToggling]                 = useState<string | null>(null);
+  const [resetTarget, setResetTarget]           = useState<Audience | null>(null);
+  const [resetForm, setResetForm]               = useState({ newRealName: '', newEmail: '' });
+  const [resetting, setResetting]               = useState(false);
+  const [deleteAudTarget, setDeleteAudTarget]   = useState<Audience | null>(null);
+  const [deletingAud, setDeletingAud]           = useState(false);
 
   /* ── Fetchers ── */
   const fetchUsers = useCallback(async () => {
@@ -190,18 +122,44 @@ export default function UsersPage() {
   /* ── User handlers ── */
   const openCreateUser = () => {
     setEditUser(null);
-    setUserForm({ name: '', email: '', role: 'staff', teamId: '' });
+    setUserForm({ name: '', email: '', role: 'staff', teamId: '', nickname: '', realName: '', preferredLanguage: 'EN' });
     setShowUserModal(true);
   };
   const openEditUser = (user: User) => {
     setEditUser(user);
-    setUserForm({ name: user.name, email: user.email, role: user.role, teamId: user.teamId || '' });
+    setUserForm({ name: user.name, email: user.email, role: user.role, teamId: user.teamId || '', nickname: '', realName: '', preferredLanguage: 'EN' });
     setShowUserModal(true);
   };
+
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingUser(true);
-    if (editUser) {
+
+    if (userForm.role === 'candidate') {
+      // Create audience / exam candidate
+      const displayName = userForm.realName || userForm.nickname || userForm.name;
+      const res = await fetch('/api/admin/audiences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: displayName,
+          realName: userForm.realName || undefined,
+          nickname: userForm.nickname || undefined,
+          email: userForm.email,
+          preferredLanguage: userForm.preferredLanguage,
+          teamId: userForm.teamId || undefined,
+        }),
+      });
+      if (res.ok) {
+        success('Candidate added');
+        setShowUserModal(false);
+        setUserForm({ name: '', email: '', role: 'staff', teamId: '', nickname: '', realName: '', preferredLanguage: 'EN' });
+        fetchAudiences();
+      } else {
+        const d = await res.json();
+        error(d.error || 'Failed to add candidate');
+      }
+    } else if (editUser) {
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -213,12 +171,12 @@ export default function UsersPage() {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...userForm, teamId: userForm.teamId || null }),
+        body: JSON.stringify({ name: userForm.name, email: userForm.email, role: userForm.role, teamId: userForm.teamId || null }),
       });
       if (res.ok) {
         success('User created');
         setShowUserModal(false);
-        setUserForm({ name: '', email: '', role: 'staff', teamId: '' });
+        setUserForm({ name: '', email: '', role: 'staff', teamId: '', nickname: '', realName: '', preferredLanguage: 'EN' });
         fetchUsers();
       } else {
         const d = await res.json();
@@ -227,6 +185,7 @@ export default function UsersPage() {
     }
     setSavingUser(false);
   };
+
   const handleDeleteUser = async () => {
     if (!deleteUserTarget) return;
     setDeletingUser(true);
@@ -237,31 +196,6 @@ export default function UsersPage() {
   };
 
   /* ── Audience handlers ── */
-  const handleCreateAudience = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingAud(true);
-    const res = await fetch('/api/admin/audiences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...audForm,
-        teamId: audForm.teamId || undefined,
-        nickname: audForm.nickname || undefined,
-        realName: audForm.realName || undefined,
-      }),
-    });
-    if (res.ok) {
-      success('Candidate added');
-      setShowAddAudience(false);
-      setAudForm({ name: '', email: '', preferredLanguage: 'EN', teamId: '', nickname: '', realName: '' });
-      fetchAudiences();
-    } else {
-      const d = await res.json();
-      error(d.error || 'Failed to add candidate');
-    }
-    setSavingAud(false);
-  };
-
   const handleToggleActive = async (a: Audience) => {
     setToggling(a.id);
     const res = await fetch(`/api/admin/audiences/${a.id}`, {
@@ -307,20 +241,17 @@ export default function UsersPage() {
   /* ── Derived ── */
   const managerUsers  = users.filter(u => MANAGER_ROLES.includes(u.role));
   const systemUsers   = users.filter(u => SYSTEM_USER_ROLES.includes(u.role));
-  const selectedRoleDesc = ROLES.find(r => r.value === userForm.role)?.desc || '';
 
   const canWrite  = ['super_admin', 'admin', 'moderator'].includes(currentUserRole);
   const canDelete = ['super_admin', 'admin'].includes(currentUserRole);
 
-  const statusCounts = {
-    active:   audiences.filter(a =>  a.isActive && !a.isArchived).length,
-    passive:  audiences.filter(a => !a.isActive && !a.isArchived).length,
-    archived: audiences.filter(a =>  a.isArchived).length,
-  };
+  const isCandidate = userForm.role === 'candidate';
+  const selectedRoleDesc = USER_ROLES.find(r => r.value === userForm.role)?.desc || '';
 
+  // Filter audience members for the System Users combined table
   const filteredAudiences = audiences.filter((a) => {
-    const q = search.toLowerCase();
-    const matchSearch =
+    const q = sysSearch.toLowerCase();
+    const matchSearch = !sysSearch ||
       a.name.toLowerCase().includes(q) ||
       a.email.toLowerCase().includes(q) ||
       (a.nickname || '').toLowerCase().includes(q) ||
@@ -333,6 +264,21 @@ export default function UsersPage() {
       filterStatus === 'archived' ? a.isArchived : true;
     return matchSearch && matchTeam && matchStatus;
   });
+
+  // Also filter system users by search
+  const filteredSystemUsers = systemUsers.filter(u => {
+    const q = sysSearch.toLowerCase();
+    return !sysSearch || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+  });
+
+  // Show staff/advisor unless explicitly filtering by passive/archived (they have no such state)
+  const showStaffAdvisor = filterStatus === 'active' || filterStatus === 'all' || !filterStatus;
+
+  const statusCounts = {
+    active:   audiences.filter(a =>  a.isActive && !a.isArchived).length,
+    passive:  audiences.filter(a => !a.isActive && !a.isArchived).length,
+    archived: audiences.filter(a =>  a.isArchived).length,
+  };
 
   const roleIconMap: Record<string, React.ReactNode> = {
     super_admin: <Shield size={10} className="mr-1" />,
@@ -353,7 +299,7 @@ export default function UsersPage() {
           <div className="page-header">
             <div>
               <h2 className="section-title">Users</h2>
-              <p className="text-sm text-slate-400 mt-0.5">{users.length} users registered</p>
+              <p className="text-sm text-slate-400 mt-0.5">{users.length + audiences.length} total</p>
             </div>
             <div className="flex gap-2">
               <button onClick={() => { fetchUsers(); fetchAudiences(); }} className="btn-secondary btn-sm">
@@ -365,76 +311,89 @@ export default function UsersPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex justify-center py-20"><Spinner className="text-blue-500" /></div>
-          ) : users.length === 0 ? (
-            <EmptyState icon={Users} title="No users yet"
-              description="Add users to the system."
-              action={<button onClick={openCreateUser} className="btn-primary btn-sm"><Plus size={14} /> Add User</button>} />
-          ) : (
-            <div className="space-y-8">
-
-              {/* Block 1: System Managers */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield size={15} className="text-blue-600" />
-                  <h3 className="font-semibold text-slate-700 text-sm">System Managers</h3>
-                  <span className="badge-blue">{managerUsers.length}</span>
-                  <p className="text-xs text-slate-400 ml-1">Super Admin · Admin · Moderator · Team Leader</p>
-                </div>
-                {managerUsers.length === 0 ? (
-                  <p className="text-sm text-slate-400 italic px-1">No manager-level users yet.</p>
-                ) : (
-                  <UserTable users={managerUsers} currentUserId={currentUserId}
-                    roleIconMap={roleIconMap} onEdit={openEditUser} onDelete={(u) => setDeleteUserTarget(u)} />
-                )}
-              </div>
-
-              {/* Block 2: System Users */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Eye size={15} className="text-slate-500" />
-                  <h3 className="font-semibold text-slate-700 text-sm">System Users</h3>
-                  <span className="badge-gray">{systemUsers.length}</span>
-                  <p className="text-xs text-slate-400 ml-1">Staff · Advisor</p>
-                </div>
-                {systemUsers.length === 0 ? (
-                  <p className="text-sm text-slate-400 italic px-1">No system users yet.</p>
-                ) : (
-                  <UserTable users={systemUsers} currentUserId={currentUserId}
-                    roleIconMap={roleIconMap} onEdit={openEditUser} onDelete={(u) => setDeleteUserTarget(u)} />
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── Divider ── */}
-          <div className="border-t border-slate-200" />
-
-          {/* Block 3: Audience */}
+          {/* ── Block 1: System Managers ── */}
           <div>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <div className="flex items-center gap-2">
-                <UserSquare2 size={15} className="text-emerald-600" />
-                <h3 className="font-semibold text-slate-700 text-sm">Audience</h3>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                  {audiences.length}
-                </span>
-                <p className="text-xs text-slate-400 ml-1">Exam candidates</p>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield size={15} className="text-blue-600" />
+              <h3 className="font-semibold text-slate-700 text-sm">System Managers</h3>
+              <span className="badge-blue">{managerUsers.length}</span>
+              <p className="text-xs text-slate-400 ml-1">Super Admin · Admin · Moderator · Team Leader</p>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-8"><Spinner className="text-blue-500" /></div>
+            ) : managerUsers.length === 0 ? (
+              <p className="text-sm text-slate-400 italic px-1">No manager-level users yet.</p>
+            ) : (
+              <div className="table-container">
+                <table className="table">
+                  <thead>
+                    <tr><th>Name</th><th>Email</th><th>Role</th><th>Team</th><th>Status</th><th>Joined</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {managerUsers.map(user => (
+                      <tr key={user.id}>
+                        <td>
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
+                              {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-800">{user.name}</p>
+                              {user.id === currentUserId && <p className="text-[10px] text-blue-500">You</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td><div className="flex items-center gap-1.5 text-slate-500"><Mail size={13} />{user.email}</div></td>
+                        <td>
+                          <span className={`badge ${ROLE_COLORS[user.role] || 'badge-gray'}`}>
+                            {roleIconMap[user.role]}{ROLE_LABELS[user.role] || user.role}
+                          </span>
+                        </td>
+                        <td>
+                          {user.team ? (
+                            <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: user.team.color }} />
+                              {user.team.name}
+                            </span>
+                          ) : <span className="text-slate-400 text-xs">—</span>}
+                        </td>
+                        <td>{user.isActive ? <span className="badge-green">Active</span> : <span className="badge-red">Inactive</span>}</td>
+                        <td className="text-slate-400 text-xs">{formatDateTime(user.createdAt)}</td>
+                        <td>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditUser(user)} className="btn-ghost btn-sm p-1.5" title="Edit"><Pencil size={13} /></button>
+                            {user.id !== currentUserId && (
+                              <button onClick={() => setDeleteUserTarget(user)} className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Delete"><Trash2 size={13} /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              {canWrite && (
-                <button onClick={() => setShowAddAudience(true)} className="btn-primary btn-sm">
-                  <Plus size={14} /> Add Candidate
-                </button>
-              )}
+            )}
+          </div>
+
+          {/* ── Block 2: System Users (staff + advisor + audience/candidates) ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <Eye size={15} className="text-slate-500" />
+              <h3 className="font-semibold text-slate-700 text-sm">System Users</h3>
+              <span className="badge-gray">{systemUsers.length + audiences.length}</span>
+              <p className="text-xs text-slate-400 ml-1">Staff · Advisor · Exam Candidates</p>
             </div>
 
-            {/* Audience Filters */}
+            {/* Filters row (audience-focused) */}
             <div className="flex flex-wrap gap-3 mb-4">
               <div className="relative">
                 <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input className="input pl-8 w-64 text-sm" placeholder="Search name, email, nickname..."
-                  value={search} onChange={(e) => setSearch(e.target.value)} />
+                <input
+                  className="input pl-8 w-60 text-sm"
+                  placeholder="Search name, email, nickname..."
+                  value={sysSearch}
+                  onChange={(e) => setSysSearch(e.target.value)}
+                />
               </div>
               <select className="input max-w-[160px] text-sm" value={filterTeam}
                 onChange={(e) => setFilterTeam(e.target.value)}>
@@ -453,25 +412,62 @@ export default function UsersPage() {
               </div>
             </div>
 
-            {audienceLoading ? (
-              <div className="flex justify-center py-12"><Spinner className="text-blue-500" /></div>
-            ) : filteredAudiences.length === 0 ? (
-              <EmptyState icon={UserSquare2} title="No candidates found"
-                description="Add medical advisors to the audience database."
-                action={canWrite
-                  ? <button onClick={() => setShowAddAudience(true)} className="btn-primary btn-sm"><Plus size={14} /> Add Candidate</button>
-                  : undefined} />
+            {loading || audienceLoading ? (
+              <div className="flex justify-center py-10"><Spinner className="text-blue-500" /></div>
+            ) : (filteredSystemUsers.length === 0 && filteredAudiences.length === 0 && !showStaffAdvisor) ? (
+              <EmptyState icon={Users} title="No users found" description="Try adjusting your search or filter." />
             ) : (
               <div className="table-container">
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Candidate</th><th>Nickname / Real Name</th><th>Email</th>
-                      <th>Team</th><th>Lang</th><th>Exams</th><th>Status</th><th></th>
+                      <th>Name</th><th>Email</th><th>Type</th><th>Team</th><th>Status</th><th>Created</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAudiences.map((a) => (
+                    {/* Staff / Advisor system users */}
+                    {showStaffAdvisor && filteredSystemUsers.map(user => (
+                      <tr key={user.id}>
+                        <td>
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
+                              {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-800">{user.name}</p>
+                              {user.id === currentUserId && <p className="text-[10px] text-blue-500">You</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td><div className="flex items-center gap-1.5 text-slate-500 text-xs"><Mail size={12} />{user.email}</div></td>
+                        <td>
+                          <span className={`badge ${ROLE_COLORS[user.role] || 'badge-gray'}`}>
+                            {roleIconMap[user.role]}{ROLE_LABELS[user.role] || user.role}
+                          </span>
+                        </td>
+                        <td>
+                          {user.team ? (
+                            <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: user.team.color }} />
+                              {user.team.name}
+                            </span>
+                          ) : <span className="text-slate-400 text-xs">—</span>}
+                        </td>
+                        <td>{user.isActive ? <span className="badge-green">Active</span> : <span className="badge-red">Inactive</span>}</td>
+                        <td className="text-slate-400 text-xs">{formatDateTime(user.createdAt)}</td>
+                        <td>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditUser(user)} className="btn-ghost btn-sm p-1.5" title="Edit"><Pencil size={13} /></button>
+                            {user.id !== currentUserId && (
+                              <button onClick={() => setDeleteUserTarget(user)} className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Delete"><Trash2 size={13} /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Audience / Exam Candidates */}
+                    {filteredAudiences.map(a => (
                       <tr key={a.id} className={a.isArchived ? 'opacity-60' : ''}>
                         <td>
                           <div className="flex items-center gap-2.5">
@@ -481,17 +477,18 @@ export default function UsersPage() {
                             }`}>
                               {a.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                             </div>
-                            <span className="font-medium text-slate-800 text-sm">{a.name}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="text-xs">
-                            {a.nickname && <p className="font-medium text-slate-700">{a.nickname}</p>}
-                            {a.realName  && <p className="text-slate-400">{a.realName}</p>}
-                            {!a.nickname && !a.realName && <span className="text-slate-400">—</span>}
+                            <div>
+                              <p className="font-medium text-slate-800 text-sm">{a.name}</p>
+                              {a.nickname && <p className="text-[10px] text-slate-400">{a.nickname}</p>}
+                            </div>
                           </div>
                         </td>
                         <td><div className="flex items-center gap-1.5 text-slate-500 text-xs"><Mail size={12} /> {a.email}</div></td>
+                        <td>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                            <UserSquare2 size={9} /> Candidate
+                          </span>
+                        </td>
                         <td>
                           {a.team ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
@@ -500,13 +497,8 @@ export default function UsersPage() {
                             </span>
                           ) : <span className="text-slate-400 text-xs">—</span>}
                         </td>
-                        <td><span className="text-slate-600 text-sm">{LANGUAGE_FLAGS[a.preferredLanguage as Language]}</span></td>
-                        <td>
-                          <span className={`font-semibold text-sm ${a._count.examSessions > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
-                            {a._count.examSessions}
-                          </span>
-                        </td>
-                        <td>{statusBadge(a)}</td>
+                        <td>{audStatusBadge(a)}</td>
+                        <td className="text-slate-400 text-xs">{formatDateTime(a.createdAt)}</td>
                         <td>
                           <div className="flex gap-1 items-center">
                             {canWrite && !a.isArchived && (
@@ -557,53 +549,115 @@ export default function UsersPage() {
           {/* ════════ MODALS ════════ */}
 
           {/* Add / Edit User Modal */}
-          <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)}
-            title={editUser ? 'Edit User' : 'Add User'} size="md">
+          <Modal
+            isOpen={showUserModal}
+            onClose={() => setShowUserModal(false)}
+            title={editUser ? 'Edit User' : isCandidate ? 'Add Exam Candidate' : 'Add User'}
+            size="md"
+          >
             <form onSubmit={handleSaveUser} className="space-y-4">
-              <div className="form-group">
-                <label className="label">Full Name</label>
-                <input className="input" placeholder="Dr. John Smith" value={userForm.name}
-                  onChange={(e) => setUserForm(f => ({ ...f, name: e.target.value }))} required />
-              </div>
+
+              {/* Role selector always first when creating */}
               {!editUser && (
                 <div className="form-group">
-                  <label className="label">Email Address</label>
-                  <input className="input" type="email" placeholder="john@esvitaclinic.com"
-                    value={userForm.email} onChange={(e) => setUserForm(f => ({ ...f, email: e.target.value }))} required />
-                  <p className="text-xs text-slate-400 mt-1">Must be @esvitaclinic.com or @esvita.clinic</p>
-                </div>
-              )}
-              <div className="form-group">
-                <label className="label">Role</label>
-                <select className="input" value={userForm.role}
-                  onChange={(e) => setUserForm(f => ({ ...f, role: e.target.value, teamId: '' }))}>
-                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-                {selectedRoleDesc && <p className="text-xs text-slate-400 mt-1">{selectedRoleDesc}</p>}
-              </div>
-              {(userForm.role === 'team_leader' || userForm.teamId) && (
-                <div className="form-group">
-                  <label className="label">
-                    Assigned Team {userForm.role === 'team_leader' && <span className="text-red-500">*</span>}
-                  </label>
-                  <select className="input" value={userForm.teamId}
-                    onChange={(e) => setUserForm(f => ({ ...f, teamId: e.target.value }))}
-                    required={userForm.role === 'team_leader'}>
-                    <option value="">— Select team —</option>
-                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  <label className="label">Type / Role</label>
+                  <select className="input" value={userForm.role}
+                    onChange={(e) => setUserForm(f => ({ ...f, role: e.target.value, teamId: '' }))}>
+                    {USER_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {userForm.role === 'team_leader'
-                      ? 'Team leaders can only see results for members of this team.'
-                      : 'Optional — associates this user with a team for reporting.'}
-                  </p>
+                  {selectedRoleDesc && <p className="text-xs text-slate-400 mt-1">{selectedRoleDesc}</p>}
                 </div>
               )}
+
+              {isCandidate && !editUser ? (
+                /* ── Candidate fields ── */
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="form-group">
+                      <label className="label">Nickname <span className="text-slate-400 font-normal">(company)</span></label>
+                      <input className="input" placeholder="e.g. doc01" value={userForm.nickname}
+                        onChange={(e) => setUserForm(f => ({ ...f, nickname: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Real Name <span className="text-red-500">*</span></label>
+                      <input className="input" placeholder="Dr. Jane Doe" value={userForm.realName}
+                        onChange={(e) => setUserForm(f => ({ ...f, realName: e.target.value }))} required />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Email Address</label>
+                    <input className="input" type="email" placeholder="jane.doe@example.com"
+                      value={userForm.email} onChange={(e) => setUserForm(f => ({ ...f, email: e.target.value }))} required />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="form-group">
+                      <label className="label">Preferred Language</label>
+                      <select className="input" value={userForm.preferredLanguage}
+                        onChange={(e) => setUserForm(f => ({ ...f, preferredLanguage: e.target.value }))}>
+                        {(['EN', 'FRA', 'RU', 'TR', 'ITA'] as Language[]).map(lang => (
+                          <option key={lang} value={lang}>{LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Team (optional)</label>
+                      <select className="input" value={userForm.teamId}
+                        onChange={(e) => setUserForm(f => ({ ...f, teamId: e.target.value }))}>
+                        <option value="">No Team</option>
+                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* ── System user fields ── */
+                <>
+                  <div className="form-group">
+                    <label className="label">Full Name</label>
+                    <input className="input" placeholder="Dr. John Smith" value={userForm.name}
+                      onChange={(e) => setUserForm(f => ({ ...f, name: e.target.value }))} required />
+                  </div>
+                  {!editUser && (
+                    <div className="form-group">
+                      <label className="label">Email Address</label>
+                      <input className="input" type="email" placeholder="john@esvitaclinic.com"
+                        value={userForm.email} onChange={(e) => setUserForm(f => ({ ...f, email: e.target.value }))} required />
+                      <p className="text-xs text-slate-400 mt-1">Must be @esvitaclinic.com or @esvita.clinic</p>
+                    </div>
+                  )}
+                  {editUser && (
+                    <div className="form-group">
+                      <label className="label">Role</label>
+                      <select className="input" value={userForm.role}
+                        onChange={(e) => setUserForm(f => ({ ...f, role: e.target.value, teamId: '' }))}>
+                        {USER_ROLES.filter(r => r.value !== 'candidate').map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
+                      {selectedRoleDesc && <p className="text-xs text-slate-400 mt-1">{selectedRoleDesc}</p>}
+                    </div>
+                  )}
+                  {(userForm.role === 'team_leader' || userForm.teamId) && (
+                    <div className="form-group">
+                      <label className="label">
+                        Assigned Team {userForm.role === 'team_leader' && <span className="text-red-500">*</span>}
+                      </label>
+                      <select className="input" value={userForm.teamId}
+                        onChange={(e) => setUserForm(f => ({ ...f, teamId: e.target.value }))}
+                        required={userForm.role === 'team_leader'}>
+                        <option value="">— Select team —</option>
+                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" className="btn-secondary" onClick={() => setShowUserModal(false)}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={savingUser}>
                   {savingUser ? <Spinner size="sm" className="text-white" /> : <Plus size={15} />}
-                  {savingUser ? 'Saving...' : editUser ? 'Save Changes' : 'Create User'}
+                  {savingUser ? 'Saving...' : editUser ? 'Save Changes' : isCandidate ? 'Add Candidate' : 'Create User'}
                 </button>
               </div>
             </form>
@@ -620,61 +674,6 @@ export default function UsersPage() {
             loading={deletingUser}
             variant="danger"
           />
-
-          {/* Add Candidate Modal */}
-          <Modal isOpen={showAddAudience} onClose={() => setShowAddAudience(false)} title="Add Candidate" size="md">
-            <form onSubmit={handleCreateAudience} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="label">Nickname <span className="text-slate-400 font-normal">(company)</span></label>
-                  <input className="input" placeholder="e.g. doc01" value={audForm.nickname}
-                    onChange={(e) => setAudForm(f => ({ ...f, nickname: e.target.value, name: e.target.value || f.name }))} />
-                  <p className="text-xs text-slate-400 mt-1">Short company identifier</p>
-                </div>
-                <div className="form-group">
-                  <label className="label">Real Name <span className="text-red-500">*</span></label>
-                  <input className="input" placeholder="Dr. Jane Doe" value={audForm.realName}
-                    onChange={(e) => setAudForm(f => ({ ...f, realName: e.target.value, name: e.target.value || f.name }))} required />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="label">Display Name <span className="text-slate-400 font-normal">(auto-filled)</span></label>
-                <input className="input" placeholder="Name shown in system" value={audForm.name}
-                  onChange={(e) => setAudForm(f => ({ ...f, name: e.target.value }))} required />
-              </div>
-              <div className="form-group">
-                <label className="label">Email Address</label>
-                <input className="input" type="email" placeholder="jane.doe@example.com"
-                  value={audForm.email} onChange={(e) => setAudForm(f => ({ ...f, email: e.target.value }))} required />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="label">Preferred Language</label>
-                  <select className="input" value={audForm.preferredLanguage}
-                    onChange={(e) => setAudForm(f => ({ ...f, preferredLanguage: e.target.value }))}>
-                    {(['EN', 'FRA', 'RU', 'TR', 'ITA'] as Language[]).map((lang) => (
-                      <option key={lang} value={lang}>{LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="label">Team (optional)</label>
-                  <select className="input" value={audForm.teamId}
-                    onChange={(e) => setAudForm(f => ({ ...f, teamId: e.target.value }))}>
-                    <option value="">No Team</option>
-                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setShowAddAudience(false)}>Cancel</button>
-                <button type="submit" className="btn-primary" disabled={savingAud}>
-                  {savingAud ? <Spinner size="sm" className="text-white" /> : <Plus size={15} />}
-                  {savingAud ? 'Adding...' : 'Add Candidate'}
-                </button>
-              </div>
-            </form>
-          </Modal>
 
           {/* Reset Candidate Modal */}
           <Modal isOpen={!!resetTarget} onClose={() => setResetTarget(null)} title="Reset Candidate" size="sm">
