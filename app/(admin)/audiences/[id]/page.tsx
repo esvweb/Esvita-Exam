@@ -1,18 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import Header from '@/components/admin/Header';
+import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
+import { useToast } from '@/components/ui/Toast';
 import { LANGUAGE_FLAGS, LANGUAGE_LABELS, formatDate, formatDateTime } from '@/lib/utils';
 import type { Language } from '@/types';
 import {
   ArrowLeft, Mail, Globe, Award, ClipboardList,
-  TrendingUp, CheckCircle2, XCircle, Minus
+  TrendingUp, CheckCircle2, XCircle, Minus, Send,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Area, AreaChart
 } from 'recharts';
 
@@ -33,29 +35,72 @@ interface AudienceProfile {
   id: string;
   name: string;
   email: string;
+  nickname: string | null;
+  realName: string | null;
   preferredLanguage: string;
   isActive: boolean;
+  isArchived: boolean;
   createdAt: string;
   examSessions: AudienceSession[];
 }
 
+interface AvailableExam {
+  id: string;
+  titleEn: string | null;
+  titleTr: string | null;
+  isActive: boolean;
+  _count: { questions: number };
+}
+
 export default function AudienceProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
+  const { success, error } = useToast();
   const [profile, setProfile] = useState<AudienceProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch(`/api/admin/audiences/${id}`)
-      .then((r) => r.json())
-      .then(setProfile)
-      .finally(() => setLoading(false));
+  // Assign exam modal
+  const [showAssign, setShowAssign] = useState(false);
+  const [exams, setExams] = useState<AvailableExam[]>([]);
+  const [assigning, setAssigning] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    const res = await fetch(`/api/admin/audiences/${id}`);
+    if (res.ok) setProfile(await res.json());
+    setLoading(false);
   }, [id]);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const openAssignModal = async () => {
+    setShowAssign(true);
+    if (exams.length === 0) {
+      const res = await fetch('/api/admin/exams');
+      if (res.ok) setExams(await res.json());
+    }
+  };
+
+  const handleAssignExam = async (examId: string) => {
+    setAssigning(true);
+    const res = await fetch(`/api/admin/exams/${examId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignTo: 'users', audienceIds: [id] }),
+    });
+    const d = await res.json();
+    if (res.ok) {
+      success(d.sent > 0 ? 'Exam invitation sent!' : 'Already invited or skipped');
+      setShowAssign(false);
+      fetchProfile();
+    } else {
+      error(d.error || 'Failed to assign exam');
+    }
+    setAssigning(false);
+  };
 
   if (loading) {
     return (
       <div>
-        <Header title="Candidate Profile" />
+        <Header title="Audience Profile" />
         <div className="flex justify-center py-20"><Spinner className="text-blue-500" /></div>
       </div>
     );
@@ -65,7 +110,7 @@ export default function AudienceProfilePage() {
     return (
       <div>
         <Header title="Not Found" />
-        <div className="p-6 text-center text-slate-500">Candidate not found.</div>
+        <div className="p-6 text-center text-slate-500">Audience member not found.</div>
       </div>
     );
   }
@@ -85,15 +130,27 @@ export default function AudienceProfilePage() {
       date: formatDate(s.completedAt),
     }));
 
-  const initials = profile.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+  const displayName = profile.realName || profile.name;
+  const initials = displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+
+  const statusBadge = profile.isArchived
+    ? <span className="badge-gray text-sm px-3 py-1">Archived</span>
+    : profile.isActive
+    ? <span className="badge-green text-sm px-3 py-1">Active</span>
+    : <span className="badge-red text-sm px-3 py-1">Passive</span>;
 
   return (
     <div>
-      <Header title="Candidate Profile" subtitle={profile.name} />
+      <Header title="Audience Profile" subtitle={displayName} />
       <div className="p-6 space-y-6">
-        <Link href="/audiences" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
-          <ArrowLeft size={15} /> Back to Candidates
-        </Link>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <Link href="/audiences" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
+            <ArrowLeft size={15} /> Back to Audience
+          </Link>
+          <button onClick={openAssignModal} className="btn-primary btn-sm">
+            <Send size={14} /> Assign Exam
+          </button>
+        </div>
 
         {/* Profile Header */}
         <div className="card p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
@@ -101,7 +158,12 @@ export default function AudienceProfilePage() {
             {initials}
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-slate-800">{profile.name}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl font-bold text-slate-800">{displayName}</h2>
+              {profile.nickname && (
+                <span className="text-sm text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{profile.nickname}</span>
+              )}
+            </div>
             <div className="flex flex-wrap gap-4 mt-2">
               <span className="flex items-center gap-1.5 text-sm text-slate-500">
                 <Mail size={13} /> {profile.email}
@@ -116,22 +178,16 @@ export default function AudienceProfilePage() {
               </span>
             </div>
           </div>
-          <div className="flex-shrink-0">
-            {profile.isActive ? (
-              <span className="badge-green text-sm px-3 py-1">Active</span>
-            ) : (
-              <span className="badge-red text-sm px-3 py-1">Inactive</span>
-            )}
-          </div>
+          <div className="flex-shrink-0">{statusBadge}</div>
         </div>
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'Exams Taken', value: sessions.length, icon: ClipboardList, color: 'blue' },
-            { label: 'Average Score', value: sessions.length > 0 ? `${avgScore}%` : '—', icon: TrendingUp, color: 'violet' },
-            { label: 'Best Score', value: sessions.length > 0 ? `${bestScore}%` : '—', icon: Award, color: 'amber' },
-            { label: 'Status', value: profile.isActive ? 'Active' : 'Inactive', icon: CheckCircle2, color: 'emerald' },
+            { label: 'Exams Taken', value: sessions.length },
+            { label: 'Average Score', value: sessions.length > 0 ? `${avgScore}%` : '—' },
+            { label: 'Best Score', value: sessions.length > 0 ? `${bestScore}%` : '—' },
+            { label: 'Status', value: profile.isArchived ? 'Archived' : profile.isActive ? 'Active' : 'Passive' },
           ].map((s) => (
             <div key={s.label} className="card p-4 text-center">
               <p className="text-2xl font-bold text-slate-800">{s.value}</p>
@@ -188,7 +244,7 @@ export default function AudienceProfilePage() {
           </div>
           {sessions.length === 0 ? (
             <div className="p-10 text-center text-slate-400 text-sm">
-              This candidate has not completed any exams yet.
+              This audience member has not completed any exams yet.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -249,6 +305,42 @@ export default function AudienceProfilePage() {
           )}
         </div>
       </div>
+
+      {/* Assign Exam Modal */}
+      <Modal isOpen={showAssign} onClose={() => setShowAssign(false)} title={`Assign Exam — ${displayName}`} size="lg">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-500">Select an exam to send an invitation to this audience member.</p>
+          {exams.length === 0 ? (
+            <div className="py-6 text-center"><Spinner className="text-blue-500" /></div>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {exams.filter(e => e.isActive).map((exam) => (
+                <div key={exam.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                  <div>
+                    <p className="font-medium text-slate-800 text-sm">{exam.titleEn || exam.titleTr || 'Untitled'}</p>
+                    <p className="text-xs text-slate-400">{exam._count.questions} questions</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={assigning}
+                    onClick={() => handleAssignExam(exam.id)}
+                    className="btn-primary btn-sm flex-shrink-0"
+                  >
+                    {assigning ? <Spinner size="sm" className="text-white" /> : <Send size={13} />}
+                    Assign
+                  </button>
+                </div>
+              ))}
+              {exams.filter(e => e.isActive).length === 0 && (
+                <p className="text-center text-slate-400 py-4 text-sm">No active exams available.</p>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end pt-2 border-t border-slate-100">
+            <button type="button" className="btn-secondary" onClick={() => setShowAssign(false)}>Cancel</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

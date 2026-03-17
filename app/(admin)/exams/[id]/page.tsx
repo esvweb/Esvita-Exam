@@ -10,8 +10,8 @@ import EmptyState from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import {
   ArrowLeft, Plus, Trash2, Upload, Send, Copy,
-  HelpCircle, CheckCircle2, Mail, Eye, Download,
-  Users, UsersRound, Search, Clock,
+  HelpCircle, CheckCircle2, XCircle, Minus, Mail, Eye, Download,
+  Users, UsersRound, Search, Clock, ChevronDown, ChevronUp, UserSquare2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { LANGUAGE_FLAGS, LANGUAGE_LABELS, getAvailableLanguages, formatDateTime } from '@/lib/utils';
@@ -60,6 +60,32 @@ interface Question {
 interface Invitation {
   id: string; email: string; name: string | null; uniqueToken: string;
   expiresAt: string; isUsed: boolean; createdAt: string;
+}
+
+interface SessionAnswer {
+  index: number;
+  questionId: string;
+  questionText: string;
+  selectedAnswer: string | null;
+  correctAnswer: string;
+  isCorrect: boolean;
+  status: 'correct' | 'wrong' | 'skipped';
+}
+
+interface ExamSession {
+  id: string;
+  candidateName: string;
+  candidateEmail: string;
+  nickname: string | null;
+  selectedLanguage: string;
+  score: number;
+  correctCount: number;
+  wrongCount: number;
+  skippedCount: number;
+  totalQuestions: number;
+  timeTaken: number | null;
+  completedAt: string;
+  questions: SessionAnswer[];
 }
 
 const emptyQuestionForm = () => ({
@@ -111,8 +137,13 @@ export default function ExamDetailPage() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'questions' | 'invitations' | 'settings'>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'sessions' | 'invitations' | 'settings'>('questions');
   const [userRole, setUserRole] = useState('');
+
+  // Sessions tab
+  const [sessions, setSessions] = useState<ExamSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
   // Question Modal
   const [showQModal, setShowQModal] = useState(false);
@@ -165,6 +196,13 @@ export default function ExamDetailPage() {
     fetchInvitations();
     fetch('/api/auth/me').then(r => r.json()).then(d => setUserRole(d?.role || ''));
   }, [fetchExam, fetchInvitations]);
+
+  const fetchSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    const res = await fetch(`/api/admin/exams/${id}/sessions`);
+    if (res.ok) setSessions(await res.json());
+    setSessionsLoading(false);
+  }, [id]);
 
   const openAssignModal = async () => {
     setAssignResult(null);
@@ -391,17 +429,27 @@ export default function ExamDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-slate-200 flex gap-6">
-          {(['questions', 'invitations', 'settings'] as const).map((tab) => (
+        <div className="border-b border-slate-200 flex gap-6 overflow-x-auto">
+          {([
+            { key: 'questions', label: 'Questions', badge: exam._count.questions },
+            { key: 'sessions', label: 'Sessions', badge: exam._count.sessions },
+            { key: 'invitations', label: 'Invitations', badge: invitations.length },
+            { key: 'settings', label: 'Settings', badge: null },
+          ] as const).map(({ key, label, badge }) => (
             <button
-              key={tab} onClick={() => setActiveTab(tab)}
-              className={`pb-3 text-sm font-medium capitalize transition-colors border-b-2 ${
-                activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+              key={key}
+              onClick={() => {
+                setActiveTab(key);
+                if (key === 'sessions' && sessions.length === 0) fetchSessions();
+              }}
+              className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 flex-shrink-0 ${
+                activeTab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
-              {tab}
-              {tab === 'questions' && <span className="ml-1.5 badge-blue">{exam._count.questions}</span>}
-              {tab === 'invitations' && <span className="ml-1.5 badge-gray">{invitations.length}</span>}
+              {label}
+              {badge !== null && badge > 0 && (
+                <span className={`ml-1.5 ${activeTab === key ? 'badge-blue' : 'badge-gray'}`}>{badge}</span>
+              )}
             </button>
           ))}
         </div>
@@ -558,6 +606,100 @@ export default function ExamDetailPage() {
           </div>
         )}
       </div>
+
+        {/* Sessions Tab */}
+        {activeTab === 'sessions' && (
+          <div>
+            {sessionsLoading ? (
+              <div className="flex justify-center py-12"><Spinner className="text-blue-500" /></div>
+            ) : sessions.length === 0 ? (
+              <EmptyState icon={UserSquare2} title="No completed sessions" description="No candidates have completed this exam yet." />
+            ) : (
+              <div className="space-y-2">
+                {sessions.map((s) => {
+                  const scoreColor = s.score >= 80 ? 'text-emerald-600' : s.score >= 60 ? 'text-yellow-600' : 'text-red-600';
+                  const scoreBg = s.score >= 80 ? 'bg-emerald-50 border-emerald-200' : s.score >= 60 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200';
+                  const isExpanded = expandedSessionId === s.id;
+                  return (
+                    <div key={s.id} className="card overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSessionId(isExpanded ? null : s.id)}
+                        className="w-full text-left p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors"
+                      >
+                        <div className={`text-center px-3 py-2 rounded-xl border text-sm font-bold min-w-[56px] ${scoreBg} ${scoreColor}`}>
+                          {Math.round(s.score)}%
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm truncate">
+                            {s.nickname ? <span className="text-slate-400 mr-1 font-normal">[{s.nickname}]</span> : null}
+                            {s.candidateName}
+                          </p>
+                          <p className="text-xs text-slate-400">{s.candidateEmail}</p>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-4 text-xs text-slate-500 flex-shrink-0">
+                          <span className="flex items-center gap-1 text-emerald-600">
+                            <CheckCircle2 size={12} /> {s.correctCount}
+                          </span>
+                          <span className="flex items-center gap-1 text-red-500">
+                            <XCircle size={12} /> {s.wrongCount}
+                          </span>
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <Minus size={12} /> {s.skippedCount}
+                          </span>
+                          <span className="text-slate-400">{formatDateTime(s.completedAt)}</span>
+                        </div>
+                        <div className="text-slate-400 flex-shrink-0">
+                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </div>
+                      </button>
+
+                      {/* Per-question breakdown */}
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 p-4">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Question Breakdown</p>
+                          <div className="space-y-2">
+                            {s.questions.map((q) => (
+                              <div key={q.questionId} className={`flex items-start gap-3 p-2.5 rounded-lg text-sm ${
+                                q.status === 'correct' ? 'bg-emerald-50' :
+                                q.status === 'wrong' ? 'bg-red-50' : 'bg-slate-50'
+                              }`}>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                  q.status === 'correct' ? 'bg-emerald-500' :
+                                  q.status === 'wrong' ? 'bg-red-400' : 'bg-slate-300'
+                                }`}>
+                                  {q.status === 'correct' ? <CheckCircle2 size={12} className="text-white" /> :
+                                   q.status === 'wrong' ? <XCircle size={12} className="text-white" /> :
+                                   <Minus size={12} className="text-white" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-slate-700 text-xs leading-snug line-clamp-2">{q.questionText || `Question ${q.index}`}</p>
+                                  <div className="flex items-center gap-3 mt-1 text-[11px]">
+                                    <span className={`font-medium ${
+                                      q.status === 'correct' ? 'text-emerald-700' :
+                                      q.status === 'wrong' ? 'text-red-600' : 'text-slate-400'
+                                    }`}>
+                                      {q.status === 'skipped' ? 'Skipped' :
+                                       `Selected: ${q.selectedAnswer ?? '—'}`}
+                                    </span>
+                                    {q.status === 'wrong' && (
+                                      <span className="text-emerald-700">Correct: {q.correctAnswer}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <span className="text-[10px] text-slate-400 flex-shrink-0">#{q.index}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* ── Add Question Modal ─────────────────────────────────────────────────── */}
       <Modal isOpen={showQModal} onClose={() => setShowQModal(false)} title="Add Question" size="2xl">

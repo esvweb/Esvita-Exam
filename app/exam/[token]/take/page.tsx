@@ -17,6 +17,7 @@ interface Question {
 
 interface SessionData {
   sessionId: string;
+  examTitle: string;
   questions: Question[];
   totalQuestions: number;
   answeredCount: number;
@@ -143,11 +144,14 @@ export default function ExamTakePage() {
       {/* Top Bar */}
       <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center">
+          <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">E</span>
           </div>
           <div>
-            <p className="text-xs font-semibold text-slate-700 hidden sm:block">
+            <p className="text-sm font-semibold text-slate-800 leading-tight line-clamp-1 hidden sm:block max-w-[200px] lg:max-w-xs">
+              {sessionData.examTitle}
+            </p>
+            <p className="text-xs text-slate-400 hidden sm:block">
               {LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}
             </p>
           </div>

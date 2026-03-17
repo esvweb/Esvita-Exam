@@ -121,8 +121,16 @@ export async function GET(req: NextRequest) {
     };
   }).filter(Boolean);
 
+  // Use the session's stored language for exam title (same as lang param)
+  const sessionLangSuffix = (session.selectedLanguage || lang).charAt(0).toUpperCase() + (session.selectedLanguage || lang).slice(1).toLowerCase();
+  const examTitle =
+    (session.exam as Record<string, unknown>)[`title${sessionLangSuffix}`] as string ||
+    session.exam.titleEn ||
+    'Exam';
+
   return apiSuccess({
     sessionId,
+    examTitle,
     questions,
     totalQuestions: questionOrder.length,
     answeredCount: session.answers.length,

@@ -4,7 +4,7 @@ import { getSessionFromRequest } from '@/lib/auth';
 import { apiError, apiSuccess } from '@/lib/utils';
 import { canManageUsers, forbidden } from '@/lib/permissions';
 
-const VALID_ROLES = ['super_admin', 'admin', 'moderator', 'team_leader', 'staff'];
+const VALID_ROLES = ['super_admin', 'admin', 'moderator', 'team_leader', 'staff', 'advisor'];
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);

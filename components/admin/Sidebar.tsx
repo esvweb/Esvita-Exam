@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, UserSquare2, ClipboardList,
   BarChart3, LogOut, GraduationCap, Users2, Shield,
-  UserCheck, Briefcase, Eye, UsersRound,
+  UserCheck, Briefcase, Eye, UsersRound, Sparkles,
 } from 'lucide-react';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/permissions';
 
@@ -22,18 +22,26 @@ const ROLE_ICONS: Record<string, React.ElementType> = {
   moderator: Briefcase,
   team_leader: UsersRound,
   staff: Eye,
+  advisor: Sparkles,
 };
 
-// Nav items visible to team_leader only (limited view)
+// Nav items visible to team_leader only
 const TEAM_LEADER_NAV = [
   { href: '/team', icon: UsersRound, label: 'My Team' },
 ];
 
-// Full nav items for admins/mods/staff
+// Advisor: limited view — only dashboard, exams, reports
+const ADVISOR_NAV = [
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/exams',     icon: ClipboardList,   label: 'Exams' },
+  { href: '/reports',   icon: BarChart3,        label: 'Reports' },
+];
+
+// Full nav items for admins / mods / staff
 const ADMIN_NAV = [
   { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',       roles: null },
   { href: '/exams',      icon: ClipboardList,   label: 'Exams',           roles: null },
-  { href: '/audiences',  icon: UserSquare2,     label: 'Candidates',      roles: null },
+  { href: '/audiences',  icon: UserSquare2,     label: 'Audience',        roles: null },
   { href: '/teams',      icon: Users2,          label: 'Teams',           roles: null },
   { href: '/reports',    icon: BarChart3,       label: 'Reports',         roles: null },
   { href: '/users',      icon: Users,           label: 'User Management', roles: ['super_admin'] },
@@ -48,8 +56,12 @@ export default function Sidebar({ role, userName, userEmail }: Props) {
   };
 
   const isTeamLeader = role === 'team_leader';
+  const isAdvisor = role === 'advisor';
+
   const navItems = isTeamLeader
     ? TEAM_LEADER_NAV
+    : isAdvisor
+    ? ADVISOR_NAV
     : ADMIN_NAV.filter(item => !item.roles || item.roles.includes(role));
 
   const RoleIcon = ROLE_ICONS[role] || UserCheck;
@@ -60,6 +72,7 @@ export default function Sidebar({ role, userName, userEmail }: Props) {
     role === 'admin'       ? 'bg-purple-100 text-purple-700' :
     role === 'moderator'   ? 'bg-emerald-100 text-emerald-700' :
     role === 'team_leader' ? 'bg-amber-100 text-amber-700' :
+    role === 'advisor'     ? 'bg-yellow-100 text-yellow-700' :
     'bg-slate-100 text-slate-600';
 
   return (
