@@ -35,7 +35,7 @@ interface Audience {
 }
 type StatusFilter = 'active' | 'passive' | 'archived' | 'all';
 
-/* ─────────── Roles ─────────── */
+/* ─────────── Role config ─────────── */
 const USER_ROLES = [
   { value: 'super_admin', label: 'Super Admin', desc: 'Full system access including user management' },
   { value: 'admin',       label: 'Admin',       desc: 'Full access except user management' },
@@ -43,10 +43,14 @@ const USER_ROLES = [
   { value: 'team_leader', label: 'Team Leader', desc: "Can view their team's exam results only (must be assigned a team)" },
   { value: 'staff',       label: 'Staff',       desc: 'Read-only access to all sections (administrative office staff)' },
   { value: 'advisor',     label: 'Advisor',     desc: 'Sees only their own exam scores on the Exams page (medical sales team)' },
-  { value: 'candidate',   label: 'Exam Candidate', desc: 'Exam candidate — can be invited to exams. Appears in System Users as audience member.' },
+  { value: 'candidate',   label: 'Exam Candidate', desc: 'Exam candidate who can be invited to exams' },
 ];
-const MANAGER_ROLES     = ['super_admin', 'admin', 'moderator', 'team_leader'];
+const MANAGER_ROLES     = ['super_admin', 'admin', 'moderator'];
+const BLOCK1_ROLES      = ['super_admin', 'admin', 'moderator', 'team_leader'];
 const SYSTEM_USER_ROLES = ['staff', 'advisor'];
+
+// Roles that get the extended form (nickname, realName, language, team)
+const isSimpleRole = (role: string) => ['super_admin', 'admin', 'moderator'].includes(role);
 
 /* ─────────── Audience status badge ─────────── */
 function audStatusBadge(a: Audience) {
@@ -60,34 +64,39 @@ export default function UsersPage() {
   const { success, error } = useToast();
 
   /* ── User state ── */
-  const [users, setUsers]                       = useState<User[]>([]);
-  const [teams, setTeams]                       = useState<Team[]>([]);
-  const [currentUserId, setCurrentUserId]       = useState('');
-  const [currentUserRole, setCurrentUserRole]   = useState('');
-  const [loading, setLoading]                   = useState(true);
-  const [showUserModal, setShowUserModal]       = useState(false);
-  const [editUser, setEditUser]                 = useState<User | null>(null);
-  const [savingUser, setSavingUser]             = useState(false);
-  const [userForm, setUserForm]                 = useState({
+  const [users, setUsers]                         = useState<User[]>([]);
+  const [teams, setTeams]                         = useState<Team[]>([]);
+  const [currentUserId, setCurrentUserId]         = useState('');
+  const [currentUserRole, setCurrentUserRole]     = useState('');
+  const [loading, setLoading]                     = useState(true);
+  const [showUserModal, setShowUserModal]         = useState(false);
+  const [editUser, setEditUser]                   = useState<User | null>(null);
+  const [savingUser, setSavingUser]               = useState(false);
+  const [userForm, setUserForm]                   = useState({
     name: '', email: '', role: 'staff', teamId: '',
-    // Candidate-specific fields
     nickname: '', realName: '', preferredLanguage: 'EN',
   });
-  const [deleteUserTarget, setDeleteUserTarget] = useState<User | null>(null);
-  const [deletingUser, setDeletingUser]         = useState(false);
+  const [deleteUserTarget, setDeleteUserTarget]   = useState<User | null>(null);
+  const [deletingUser, setDeletingUser]           = useState(false);
+
+  // User toggle & reset
+  const [togglingUser, setTogglingUser]           = useState<string | null>(null);
+  const [resetUserTarget, setResetUserTarget]     = useState<User | null>(null);
+  const [resetUserForm, setResetUserForm]         = useState({ newName: '', newEmail: '' });
+  const [resettingUser, setResettingUser]         = useState(false);
 
   /* ── Audience state ── */
-  const [audiences, setAudiences]               = useState<Audience[]>([]);
-  const [audienceLoading, setAudienceLoading]   = useState(true);
-  const [sysSearch, setSysSearch]               = useState('');
-  const [filterTeam, setFilterTeam]             = useState('');
-  const [filterStatus, setFilterStatus]         = useState<StatusFilter>('active');
-  const [toggling, setToggling]                 = useState<string | null>(null);
-  const [resetTarget, setResetTarget]           = useState<Audience | null>(null);
-  const [resetForm, setResetForm]               = useState({ newRealName: '', newEmail: '' });
-  const [resetting, setResetting]               = useState(false);
-  const [deleteAudTarget, setDeleteAudTarget]   = useState<Audience | null>(null);
-  const [deletingAud, setDeletingAud]           = useState(false);
+  const [audiences, setAudiences]                 = useState<Audience[]>([]);
+  const [audienceLoading, setAudienceLoading]     = useState(true);
+  const [sysSearch, setSysSearch]                 = useState('');
+  const [filterTeam, setFilterTeam]               = useState('');
+  const [filterStatus, setFilterStatus]           = useState<StatusFilter>('active');
+  const [toggling, setToggling]                   = useState<string | null>(null);
+  const [resetTarget, setResetTarget]             = useState<Audience | null>(null);
+  const [resetForm, setResetForm]                 = useState({ newRealName: '', newEmail: '' });
+  const [resetting, setResetting]                 = useState(false);
+  const [deleteAudTarget, setDeleteAudTarget]     = useState<Audience | null>(null);
+  const [deletingAud, setDeletingAud]             = useState(false);
 
   /* ── Fetchers ── */
   const fetchUsers = useCallback(async () => {
@@ -127,7 +136,7 @@ export default function UsersPage() {
   };
   const openEditUser = (user: User) => {
     setEditUser(user);
-    setUserForm({ name: user.name, email: user.email, role: user.role, teamId: user.teamId || '', nickname: '', realName: '', preferredLanguage: 'EN' });
+    setUserForm({ name: user.name, email: user.email, role: user.role, teamId: user.teamId || '', nickname: '', realName: user.name, preferredLanguage: 'EN' });
     setShowUserModal(true);
   };
 
@@ -136,7 +145,7 @@ export default function UsersPage() {
     setSavingUser(true);
 
     if (userForm.role === 'candidate') {
-      // Create audience / exam candidate
+      // Create Audience record
       const displayName = userForm.realName || userForm.nickname || userForm.name;
       const res = await fetch('/api/admin/audiences', {
         method: 'POST',
@@ -160,18 +169,22 @@ export default function UsersPage() {
         error(d.error || 'Failed to add candidate');
       }
     } else if (editUser) {
+      // Update existing system user
+      const name = isSimpleRole(userForm.role) ? userForm.name : (userForm.realName || userForm.name);
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editUser.id, name: userForm.name, role: userForm.role, teamId: userForm.teamId || null }),
+        body: JSON.stringify({ id: editUser.id, name, role: userForm.role, teamId: userForm.teamId || null }),
       });
       if (res.ok) { success('User updated'); setShowUserModal(false); fetchUsers(); }
       else { const d = await res.json(); error(d.error || 'Failed to update'); }
     } else {
+      // Create new system user
+      const name = isSimpleRole(userForm.role) ? userForm.name : (userForm.realName || userForm.name);
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: userForm.name, email: userForm.email, role: userForm.role, teamId: userForm.teamId || null }),
+        body: JSON.stringify({ name, email: userForm.email, role: userForm.role, teamId: userForm.teamId || null }),
       });
       if (res.ok) {
         success('User created');
@@ -193,6 +206,63 @@ export default function UsersPage() {
     if (res.ok) { success('User deleted'); setDeleteUserTarget(null); fetchUsers(); }
     else { const d = await res.json(); error(d.error || 'Failed to delete'); }
     setDeletingUser(false);
+  };
+
+  const handleToggleUser = async (user: User) => {
+    setTogglingUser(user.id);
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: user.id, isActive: !user.isActive }),
+    });
+    if (res.ok) { success(user.isActive ? 'Set to inactive' : 'Set to active'); fetchUsers(); }
+    else { const d = await res.json(); error(d.error || 'Failed to update'); }
+    setTogglingUser(null);
+  };
+
+  const handleResetUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetUserTarget) return;
+    setResettingUser(true);
+    // Deactivate old user
+    const patchRes = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: resetUserTarget.id, isActive: false }),
+    });
+    if (!patchRes.ok) {
+      const d = await patchRes.json();
+      error(d.error || 'Failed to deactivate user');
+      setResettingUser(false);
+      return;
+    }
+    // Create new user with same role/team
+    const createRes = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: resetUserForm.newName,
+        email: resetUserForm.newEmail,
+        role: resetUserTarget.role,
+        teamId: resetUserTarget.teamId,
+      }),
+    });
+    if (createRes.ok) {
+      success('User reset — old account deactivated, new account created');
+      setResetUserTarget(null);
+      setResetUserForm({ newName: '', newEmail: '' });
+      fetchUsers();
+    } else {
+      const d = await createRes.json();
+      error(d.error || 'Failed to create new user');
+      // Re-activate old user on failure
+      await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: resetUserTarget.id, isActive: true }),
+      });
+    }
+    setResettingUser(false);
   };
 
   /* ── Audience handlers ── */
@@ -239,16 +309,22 @@ export default function UsersPage() {
   };
 
   /* ── Derived ── */
-  const managerUsers  = users.filter(u => MANAGER_ROLES.includes(u.role));
+  const managerUsers  = users.filter(u => BLOCK1_ROLES.includes(u.role));
   const systemUsers   = users.filter(u => SYSTEM_USER_ROLES.includes(u.role));
 
   const canWrite  = ['super_admin', 'admin', 'moderator'].includes(currentUserRole);
   const canDelete = ['super_admin', 'admin'].includes(currentUserRole);
 
-  const isCandidate = userForm.role === 'candidate';
+  const isCandidate  = userForm.role === 'candidate';
+  const isSimpleForm = isSimpleRole(userForm.role);
   const selectedRoleDesc = USER_ROLES.find(r => r.value === userForm.role)?.desc || '';
 
-  // Filter audience members for the System Users combined table
+  const statusCounts = {
+    active:   audiences.filter(a =>  a.isActive && !a.isArchived).length,
+    passive:  audiences.filter(a => !a.isActive && !a.isArchived).length,
+    archived: audiences.filter(a =>  a.isArchived).length,
+  };
+
   const filteredAudiences = audiences.filter((a) => {
     const q = sysSearch.toLowerCase();
     const matchSearch = !sysSearch ||
@@ -265,20 +341,11 @@ export default function UsersPage() {
     return matchSearch && matchTeam && matchStatus;
   });
 
-  // Also filter system users by search
   const filteredSystemUsers = systemUsers.filter(u => {
     const q = sysSearch.toLowerCase();
     return !sysSearch || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
-
-  // Show staff/advisor unless explicitly filtering by passive/archived (they have no such state)
   const showStaffAdvisor = filterStatus === 'active' || filterStatus === 'all' || !filterStatus;
-
-  const statusCounts = {
-    active:   audiences.filter(a =>  a.isActive && !a.isArchived).length,
-    passive:  audiences.filter(a => !a.isActive && !a.isArchived).length,
-    archived: audiences.filter(a =>  a.isArchived).length,
-  };
 
   const roleIconMap: Record<string, React.ReactNode> = {
     super_admin: <Shield size={10} className="mr-1" />,
@@ -384,16 +451,12 @@ export default function UsersPage() {
               <p className="text-xs text-slate-400 ml-1">Staff · Advisor · Exam Candidates</p>
             </div>
 
-            {/* Filters row (audience-focused) */}
+            {/* Filters */}
             <div className="flex flex-wrap gap-3 mb-4">
               <div className="relative">
                 <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  className="input pl-8 w-60 text-sm"
-                  placeholder="Search name, email, nickname..."
-                  value={sysSearch}
-                  onChange={(e) => setSysSearch(e.target.value)}
-                />
+                <input className="input pl-8 w-60 text-sm" placeholder="Search name, email, nickname..."
+                  value={sysSearch} onChange={(e) => setSysSearch(e.target.value)} />
               </div>
               <select className="input max-w-[160px] text-sm" value={filterTeam}
                 onChange={(e) => setFilterTeam(e.target.value)}>
@@ -414,18 +477,15 @@ export default function UsersPage() {
 
             {loading || audienceLoading ? (
               <div className="flex justify-center py-10"><Spinner className="text-blue-500" /></div>
-            ) : (filteredSystemUsers.length === 0 && filteredAudiences.length === 0 && !showStaffAdvisor) ? (
-              <EmptyState icon={Users} title="No users found" description="Try adjusting your search or filter." />
             ) : (
               <div className="table-container">
                 <table className="table">
                   <thead>
-                    <tr>
-                      <th>Name</th><th>Email</th><th>Type</th><th>Team</th><th>Status</th><th>Created</th><th></th>
-                    </tr>
+                    <tr><th>Name</th><th>Email</th><th>Type</th><th>Team</th><th>Status</th><th>Created</th><th></th></tr>
                   </thead>
                   <tbody>
-                    {/* Staff / Advisor system users */}
+
+                    {/* ── Staff / Advisor system users ── */}
                     {showStaffAdvisor && filteredSystemUsers.map(user => (
                       <tr key={user.id}>
                         <td>
@@ -456,17 +516,47 @@ export default function UsersPage() {
                         <td>{user.isActive ? <span className="badge-green">Active</span> : <span className="badge-red">Inactive</span>}</td>
                         <td className="text-slate-400 text-xs">{formatDateTime(user.createdAt)}</td>
                         <td>
-                          <div className="flex gap-1">
-                            <button onClick={() => openEditUser(user)} className="btn-ghost btn-sm p-1.5" title="Edit"><Pencil size={13} /></button>
-                            {user.id !== currentUserId && (
-                              <button onClick={() => setDeleteUserTarget(user)} className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Delete"><Trash2 size={13} /></button>
+                          <div className="flex gap-1 items-center">
+                            {/* Toggle active/passive */}
+                            <button
+                              onClick={() => handleToggleUser(user)}
+                              disabled={togglingUser === user.id || user.id === currentUserId}
+                              title={user.isActive ? 'Set to inactive' : 'Set to active'}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${
+                                user.isActive ? 'bg-emerald-500' : 'bg-slate-300'
+                              } ${user.id === currentUserId ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow ${
+                                user.isActive ? 'translate-x-4' : 'translate-x-1'
+                              }`} />
+                            </button>
+                            {/* Edit */}
+                            <button onClick={() => openEditUser(user)} className="btn-ghost btn-sm p-1.5" title="Edit">
+                              <Pencil size={13} />
+                            </button>
+                            {/* Reset */}
+                            {canWrite && user.id !== currentUserId && (
+                              <button
+                                onClick={() => { setResetUserTarget(user); setResetUserForm({ newName: '', newEmail: '' }); }}
+                                className="btn-ghost btn-sm p-1.5 text-amber-500 hover:text-amber-700 hover:bg-amber-50"
+                                title="Reset (deactivate & create new)"
+                              >
+                                <RotateCcw size={13} />
+                              </button>
+                            )}
+                            {/* Delete */}
+                            {canDelete && user.id !== currentUserId && (
+                              <button onClick={() => setDeleteUserTarget(user)}
+                                className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Delete">
+                                <Trash2 size={13} />
+                              </button>
                             )}
                           </div>
                         </td>
                       </tr>
                     ))}
 
-                    {/* Audience / Exam Candidates */}
+                    {/* ── Audience / Exam Candidates ── */}
                     {filteredAudiences.map(a => (
                       <tr key={a.id} className={a.isArchived ? 'opacity-60' : ''}>
                         <td>
@@ -528,11 +618,8 @@ export default function UsersPage() {
                               </button>
                             )}
                             {canDelete && (
-                              <button
-                                onClick={() => setDeleteAudTarget(a)}
-                                className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                title="Delete"
-                              >
+                              <button onClick={() => setDeleteAudTarget(a)}
+                                className="btn-ghost btn-sm p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Delete">
                                 <Trash2 size={13} />
                               </button>
                             )}
@@ -540,6 +627,12 @@ export default function UsersPage() {
                         </td>
                       </tr>
                     ))}
+
+                    {showStaffAdvisor && filteredSystemUsers.length === 0 && filteredAudiences.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center text-slate-400 text-sm py-8">No users found</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -557,60 +650,20 @@ export default function UsersPage() {
           >
             <form onSubmit={handleSaveUser} className="space-y-4">
 
-              {/* Role selector always first when creating */}
-              {!editUser && (
-                <div className="form-group">
-                  <label className="label">Type / Role</label>
-                  <select className="input" value={userForm.role}
-                    onChange={(e) => setUserForm(f => ({ ...f, role: e.target.value, teamId: '' }))}>
-                    {USER_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                  </select>
-                  {selectedRoleDesc && <p className="text-xs text-slate-400 mt-1">{selectedRoleDesc}</p>}
-                </div>
-              )}
+              {/* Role / Type selector */}
+              <div className="form-group">
+                <label className="label">Type / Role</label>
+                <select className="input" value={userForm.role}
+                  onChange={(e) => setUserForm(f => ({ ...f, role: e.target.value, teamId: '' }))}>
+                  {USER_ROLES
+                    .filter(r => editUser ? r.value !== 'candidate' : true)
+                    .map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                {selectedRoleDesc && <p className="text-xs text-slate-400 mt-1">{selectedRoleDesc}</p>}
+              </div>
 
-              {isCandidate && !editUser ? (
-                /* ── Candidate fields ── */
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="form-group">
-                      <label className="label">Nickname <span className="text-slate-400 font-normal">(company)</span></label>
-                      <input className="input" placeholder="e.g. doc01" value={userForm.nickname}
-                        onChange={(e) => setUserForm(f => ({ ...f, nickname: e.target.value }))} />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Real Name <span className="text-red-500">*</span></label>
-                      <input className="input" placeholder="Dr. Jane Doe" value={userForm.realName}
-                        onChange={(e) => setUserForm(f => ({ ...f, realName: e.target.value }))} required />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Email Address</label>
-                    <input className="input" type="email" placeholder="jane.doe@example.com"
-                      value={userForm.email} onChange={(e) => setUserForm(f => ({ ...f, email: e.target.value }))} required />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="form-group">
-                      <label className="label">Preferred Language</label>
-                      <select className="input" value={userForm.preferredLanguage}
-                        onChange={(e) => setUserForm(f => ({ ...f, preferredLanguage: e.target.value }))}>
-                        {(['EN', 'FRA', 'RU', 'TR', 'ITA'] as Language[]).map(lang => (
-                          <option key={lang} value={lang}>{LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Team (optional)</label>
-                      <select className="input" value={userForm.teamId}
-                        onChange={(e) => setUserForm(f => ({ ...f, teamId: e.target.value }))}>
-                        <option value="">No Team</option>
-                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                /* ── System user fields ── */
+              {isSimpleForm ? (
+                /* ── Simple form for Super Admin / Admin / Moderator ── */
                 <>
                   <div className="form-group">
                     <label className="label">Full Name</label>
@@ -625,31 +678,56 @@ export default function UsersPage() {
                       <p className="text-xs text-slate-400 mt-1">Must be @esvitaclinic.com or @esvita.clinic</p>
                     </div>
                   )}
-                  {editUser && (
+                </>
+              ) : (
+                /* ── Extended form for Team Leader / Staff / Advisor / Candidate ── */
+                <>
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="form-group">
-                      <label className="label">Role</label>
-                      <select className="input" value={userForm.role}
-                        onChange={(e) => setUserForm(f => ({ ...f, role: e.target.value, teamId: '' }))}>
-                        {USER_ROLES.filter(r => r.value !== 'candidate').map(r => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
-                        ))}
-                      </select>
-                      {selectedRoleDesc && <p className="text-xs text-slate-400 mt-1">{selectedRoleDesc}</p>}
+                      <label className="label">Nickname <span className="text-slate-400 font-normal">(company)</span></label>
+                      <input className="input" placeholder="e.g. doc01" value={userForm.nickname}
+                        onChange={(e) => setUserForm(f => ({ ...f, nickname: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Real Name <span className="text-red-500">*</span></label>
+                      <input className="input" placeholder="Dr. Jane Doe" value={userForm.realName}
+                        onChange={(e) => setUserForm(f => ({ ...f, realName: e.target.value }))} required />
+                    </div>
+                  </div>
+                  {!editUser && (
+                    <div className="form-group">
+                      <label className="label">Email Address</label>
+                      <input className="input" type="email" placeholder="jane.doe@example.com"
+                        value={userForm.email} onChange={(e) => setUserForm(f => ({ ...f, email: e.target.value }))} required />
+                      {!isCandidate && (
+                        <p className="text-xs text-slate-400 mt-1">Must be @esvitaclinic.com or @esvita.clinic</p>
+                      )}
                     </div>
                   )}
-                  {(userForm.role === 'team_leader' || userForm.teamId) && (
-                    <div className="form-group">
+                  <div className="grid grid-cols-2 gap-3">
+                    {isCandidate && (
+                      <div className="form-group">
+                        <label className="label">Preferred Language</label>
+                        <select className="input" value={userForm.preferredLanguage}
+                          onChange={(e) => setUserForm(f => ({ ...f, preferredLanguage: e.target.value }))}>
+                          {(['EN', 'FRA', 'RU', 'TR', 'ITA'] as Language[]).map(lang => (
+                            <option key={lang} value={lang}>{LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div className={`form-group ${isCandidate ? '' : 'col-span-2'}`}>
                       <label className="label">
-                        Assigned Team {userForm.role === 'team_leader' && <span className="text-red-500">*</span>}
+                        Team {userForm.role === 'team_leader' ? <span className="text-red-500">*</span> : <span className="text-slate-400 font-normal">(optional)</span>}
                       </label>
                       <select className="input" value={userForm.teamId}
                         onChange={(e) => setUserForm(f => ({ ...f, teamId: e.target.value }))}
                         required={userForm.role === 'team_leader'}>
-                        <option value="">— Select team —</option>
+                        <option value="">No Team</option>
                         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
-                  )}
+                  </div>
                 </>
               )}
 
@@ -674,6 +752,37 @@ export default function UsersPage() {
             loading={deletingUser}
             variant="danger"
           />
+
+          {/* Reset System User Modal */}
+          <Modal isOpen={!!resetUserTarget} onClose={() => setResetUserTarget(null)} title="Reset System User" size="sm">
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+              <Archive size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700">
+                <strong>{resetUserTarget?.name}</strong> will be deactivated. A new {ROLE_LABELS[resetUserTarget?.role || ''] || ''} account will be created with the information below.
+              </p>
+            </div>
+            <form onSubmit={handleResetUser} className="space-y-4">
+              <div className="form-group">
+                <label className="label">New Person's Full Name <span className="text-red-500">*</span></label>
+                <input className="input" placeholder="Full name of the new person"
+                  value={resetUserForm.newName}
+                  onChange={(e) => setResetUserForm(f => ({ ...f, newName: e.target.value }))} required />
+              </div>
+              <div className="form-group">
+                <label className="label">New Email Address <span className="text-red-500">*</span></label>
+                <input className="input" type="email" placeholder="newperson@esvitaclinic.com"
+                  value={resetUserForm.newEmail}
+                  onChange={(e) => setResetUserForm(f => ({ ...f, newEmail: e.target.value }))} required />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" className="btn-secondary" onClick={() => setResetUserTarget(null)}>Cancel</button>
+                <button type="submit" className="btn-primary bg-amber-600 hover:bg-amber-700" disabled={resettingUser}>
+                  {resettingUser ? <Spinner size="sm" className="text-white" /> : <RotateCcw size={15} />}
+                  {resettingUser ? 'Resetting...' : 'Deactivate & Create New'}
+                </button>
+              </div>
+            </form>
+          </Modal>
 
           {/* Reset Candidate Modal */}
           <Modal isOpen={!!resetTarget} onClose={() => setResetTarget(null)} title="Reset Candidate" size="sm">
