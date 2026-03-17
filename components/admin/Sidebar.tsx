@@ -41,7 +41,6 @@ const ADVISOR_NAV = [
 const ADMIN_NAV = [
   { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',       roles: null },
   { href: '/exams',      icon: ClipboardList,   label: 'Exams',           roles: null },
-  { href: '/audiences',  icon: UserSquare2,     label: 'Audience',        roles: null },
   { href: '/teams',      icon: Users2,          label: 'Teams',           roles: null },
   { href: '/reports',    icon: BarChart3,       label: 'Reports',         roles: null },
   { href: '/users',      icon: Users,           label: 'User Management', roles: ['super_admin'] },

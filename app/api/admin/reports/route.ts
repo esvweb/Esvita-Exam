@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
   });
 
   const rows = sessions.map((s) => ({
+    sessionId: s.id,
+    examId: s.examId,
     candidateName: s.audience?.name || s.externalName || 'External',
     candidateEmail: s.audience?.email || s.externalEmail || '',
     examTitle: s.exam.titleEn || s.exam.titleTr || 'Exam',

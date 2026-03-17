@@ -6,7 +6,8 @@ import EmptyState from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import {
   BarChart3, Download, RefreshCw, TrendingUp, Award,
-  CheckCircle2, XCircle, HelpCircle, Users, Filter
+  CheckCircle2, XCircle, HelpCircle, Users, Filter,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
 import PageTransition from '@/components/ui/PageTransition';
@@ -17,7 +18,18 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
 
+interface QuestionAnswer {
+  index: number;
+  questionId?: string;
+  questionText: string;
+  selectedAnswer: string | null;
+  correctAnswer: string;
+  status: 'correct' | 'wrong' | 'skipped';
+}
+
 interface ReportRow {
+  sessionId: string;
+  examId: string;
   candidateName: string;
   candidateEmail: string;
   examTitle: string;
@@ -33,8 +45,6 @@ interface ReportRow {
 
 interface Exam { id: string; titleEn: string | null; titleTr: string | null; }
 
-const SCORE_COLORS = ['#22c55e', '#eab308', '#ef4444'];
-
 export default function ReportsPage() {
   const { error } = useToast();
   const [rows, setRows] = useState<ReportRow[]>([]);
@@ -42,7 +52,11 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [selectedExam, setSelectedExam] = useState('');
-  const [activeChart, setActiveChart] = useState<'bar' | 'pie'>('bar');
+
+  // Per-question expansion state
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [questionCache, setQuestionCache] = useState<Record<string, QuestionAnswer[]>>({});
+  const [loadingQuestions, setLoadingQuestions] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -56,9 +70,31 @@ export default function ReportsPage() {
     }
     if (examsRes.ok) setExams(await examsRes.json());
     setLoading(false);
+    setExpandedSession(null);
   }, [selectedExam]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleRowClick = async (row: ReportRow) => {
+    if (expandedSession === row.sessionId) {
+      setExpandedSession(null);
+      return;
+    }
+    setExpandedSession(row.sessionId);
+    if (!questionCache[row.sessionId]) {
+      setLoadingQuestions(row.sessionId);
+      try {
+        const res = await fetch(`/api/admin/sessions/${row.sessionId}`);
+        if (res.ok) {
+          const d = await res.json();
+          setQuestionCache(prev => ({ ...prev, [row.sessionId]: d.data?.questions || [] }));
+        }
+      } catch {
+        error('Failed to load question breakdown');
+      }
+      setLoadingQuestions(null);
+    }
+  };
 
   const handleDownloadCSV = async () => {
     setDownloading(true);
@@ -78,7 +114,6 @@ export default function ReportsPage() {
   const passRate = rows.length > 0 ? Math.round((rows.filter((r) => r.score >= 60).length / rows.length) * 100) : 0;
   const highScorers = rows.filter((r) => r.score >= 80).length;
 
-  // Chart data: score distribution
   const scoreBuckets = [
     { label: '0-40%', count: rows.filter((r) => r.score < 40).length, fill: '#ef4444' },
     { label: '40-60%', count: rows.filter((r) => r.score >= 40 && r.score < 60).length, fill: '#f97316' },
@@ -86,7 +121,6 @@ export default function ReportsPage() {
     { label: '80-100%', count: rows.filter((r) => r.score >= 80).length, fill: '#22c55e' },
   ];
 
-  // Pie: pass/fail
   const pieData = [
     { name: 'Excellent (≥80%)', value: rows.filter((r) => r.score >= 80).length, color: '#22c55e' },
     { name: 'Pass (60-79%)', value: rows.filter((r) => r.score >= 60 && r.score < 80).length, color: '#eab308' },
@@ -151,7 +185,6 @@ export default function ReportsPage() {
         {/* Charts */}
         {rows.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Score Distribution Bar */}
             <div className="card p-5">
               <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
                 <BarChart3 size={16} className="text-blue-600" /> Score Distribution
@@ -183,7 +216,6 @@ export default function ReportsPage() {
               </ResponsiveContainer>
             </div>
 
-            {/* Pie Chart */}
             <div className="card p-5">
               <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
                 <Award size={16} className="text-emerald-600" /> Pass / Fail Breakdown
@@ -191,19 +223,9 @@ export default function ReportsPage() {
               {pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={75}
-                      innerRadius={40}
-                      paddingAngle={3}
-                    >
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
+                    <Pie data={pieData} dataKey="value" nameKey="name"
+                      cx="50%" cy="50%" outerRadius={75} innerRadius={40} paddingAngle={3}>
+                      {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                     </Pie>
                     <Tooltip formatter={(value) => [`${value} candidates`, '']} />
                     <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
@@ -220,15 +242,13 @@ export default function ReportsPage() {
         {loading ? (
           <div className="flex justify-center py-16"><Spinner className="text-blue-500" /></div>
         ) : rows.length === 0 ? (
-          <EmptyState
-            icon={BarChart3}
-            title="No completed exams yet"
-            description="Results will appear here once candidates complete exams."
-          />
+          <EmptyState icon={BarChart3} title="No completed exams yet"
+            description="Results will appear here once candidates complete exams." />
         ) : (
           <div className="card">
             <div className="card-header flex items-center justify-between">
               <h3 className="font-semibold text-slate-700">{rows.length} Results</h3>
+              <p className="text-xs text-slate-400">Click a row to see per-question breakdown</p>
             </div>
             <div className="table-container border-0 rounded-none">
               <table className="table">
@@ -242,48 +262,125 @@ export default function ReportsPage() {
                     <th>Wrong</th>
                     <th>Skipped</th>
                     <th>Completed</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, i) => {
+                  {rows.map((row) => {
                     const scoreColor = row.score >= 80 ? 'text-emerald-600' : row.score >= 60 ? 'text-yellow-600' : 'text-red-600';
                     const scoreBg = row.score >= 80 ? 'bg-emerald-100' : row.score >= 60 ? 'bg-yellow-100' : 'bg-red-100';
+                    const isExpanded = expandedSession === row.sessionId;
+                    const isLoadingThis = loadingQuestions === row.sessionId;
+                    const questions = questionCache[row.sessionId] || [];
+
                     return (
-                      <tr key={i}>
-                        <td>
-                          <div>
-                            <p className="font-medium text-slate-800 text-sm">{row.candidateName}</p>
-                            <p className="text-xs text-slate-400">{row.candidateEmail}</p>
-                          </div>
-                        </td>
-                        <td className="text-slate-600 text-sm max-w-48">
-                          <p className="truncate">{row.examTitle}</p>
-                        </td>
-                        <td>
-                          <span className="text-sm">{LANGUAGE_FLAGS[row.language as Language] || ''} {row.language}</span>
-                        </td>
-                        <td>
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg font-bold text-sm ${scoreBg} ${scoreColor}`}>
-                            {row.score}%
-                          </span>
-                        </td>
-                        <td>
-                          <span className="flex items-center gap-1 text-emerald-600 font-medium text-sm">
-                            <CheckCircle2 size={13} />{row.correctCount}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="flex items-center gap-1 text-red-500 font-medium text-sm">
-                            <XCircle size={13} />{row.wrongCount}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="flex items-center gap-1 text-slate-400 text-sm">
-                            <HelpCircle size={13} />{row.skippedCount}
-                          </span>
-                        </td>
-                        <td className="text-xs text-slate-400">{row.completedAt}</td>
-                      </tr>
+                      <>
+                        <tr
+                          key={row.sessionId}
+                          onClick={() => handleRowClick(row)}
+                          className={`cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/60' : 'hover:bg-slate-50'}`}
+                        >
+                          <td>
+                            <div>
+                              <p className="font-medium text-slate-800 text-sm">{row.candidateName}</p>
+                              {row.candidateEmail && <p className="text-xs text-slate-400">{row.candidateEmail}</p>}
+                            </div>
+                          </td>
+                          <td className="text-slate-600 text-sm max-w-48">
+                            <p className="truncate">{row.examTitle}</p>
+                          </td>
+                          <td>
+                            <span className="text-sm">{LANGUAGE_FLAGS[row.language as Language] || ''} {row.language}</span>
+                          </td>
+                          <td>
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg font-bold text-sm ${scoreBg} ${scoreColor}`}>
+                              {row.score}%
+                            </span>
+                          </td>
+                          <td>
+                            <span className="flex items-center gap-1 text-emerald-600 font-medium text-sm">
+                              <CheckCircle2 size={13} />{row.correctCount}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="flex items-center gap-1 text-red-500 font-medium text-sm">
+                              <XCircle size={13} />{row.wrongCount}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="flex items-center gap-1 text-slate-400 text-sm">
+                              <HelpCircle size={13} />{row.skippedCount}
+                            </span>
+                          </td>
+                          <td className="text-xs text-slate-400">{row.completedAt}</td>
+                          <td>
+                            <button className="btn-ghost btn-sm p-1.5 text-slate-400">
+                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {/* Per-question breakdown row */}
+                        {isExpanded && (
+                          <tr key={`${row.sessionId}-detail`}>
+                            <td colSpan={9} className="p-0 bg-slate-50 border-b border-slate-200">
+                              {isLoadingThis ? (
+                                <div className="flex justify-center py-6">
+                                  <Spinner className="text-blue-500" />
+                                </div>
+                              ) : questions.length === 0 ? (
+                                <p className="text-center text-slate-400 text-sm py-4">No question data available</p>
+                              ) : (
+                                <div className="p-4">
+                                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                                    Question Breakdown — {row.candidateName}
+                                  </p>
+                                  <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                                    {questions.map((q) => (
+                                      <div
+                                        key={q.questionId || q.index}
+                                        className={`flex items-start gap-3 px-3 py-2 rounded-lg text-xs ${
+                                          q.status === 'correct'  ? 'bg-emerald-50 border border-emerald-100' :
+                                          q.status === 'wrong'    ? 'bg-red-50 border border-red-100' :
+                                                                    'bg-slate-100 border border-slate-200'
+                                        }`}
+                                      >
+                                        <span className="font-bold text-slate-500 w-5 flex-shrink-0 pt-0.5">
+                                          {q.index}.
+                                        </span>
+                                        {q.status === 'correct' ? (
+                                          <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                                        ) : q.status === 'wrong' ? (
+                                          <XCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+                                        ) : (
+                                          <HelpCircle size={14} className="text-slate-400 flex-shrink-0 mt-0.5" />
+                                        )}
+                                        <span className={`flex-1 leading-relaxed ${
+                                          q.status === 'correct' ? 'text-emerald-800' :
+                                          q.status === 'wrong'   ? 'text-red-800' : 'text-slate-500'
+                                        }`}>
+                                          {q.questionText}
+                                        </span>
+                                        <div className="flex-shrink-0 text-right space-y-0.5 min-w-[80px]">
+                                          {q.status === 'wrong' && q.selectedAnswer && (
+                                            <p className="text-red-500">Answered: {q.selectedAnswer}</p>
+                                          )}
+                                          {q.status !== 'skipped' && (
+                                            <p className="text-slate-400">Correct: {q.correctAnswer}</p>
+                                          )}
+                                          {q.status === 'skipped' && (
+                                            <p className="text-slate-400">Skipped</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     );
                   })}
                 </tbody>
