@@ -126,8 +126,8 @@ model Exam {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdBy String
-  creator   User   @relation("ExamCreator", fields: [createdBy], references: [id])
+  createdBy String?
+  creator   User?  @relation("ExamCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   questions   Question[]
   sessions    ExamSession[]
@@ -185,11 +185,11 @@ model ExamInvitation {
   otpCode     String?
   expiresAt   DateTime
   isUsed      Boolean  @default(false)
-  createdBy   String
+  createdBy   String?
   createdAt   DateTime @default(now())
 
   exam    Exam        @relation(fields: [examId], references: [id])
-  creator User        @relation("InvitationCreator", fields: [createdBy], references: [id])
+  creator User?       @relation("InvitationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   sessions ExamSession[]
 
   @@map("exam_invitations")

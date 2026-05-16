@@ -78,6 +78,14 @@ export async function DELETE(req: NextRequest) {
   if (!id) return apiError('User ID is required');
   if (id === session.userId) return apiError('Cannot delete your own account');
 
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) return apiError('User not found', 404);
+
+  if (target.role === 'super_admin') {
+    const superAdminCount = await prisma.user.count({ where: { role: 'super_admin' } });
+    if (superAdminCount <= 1) return apiError('Cannot delete the last super admin account');
+  }
+
   await prisma.user.delete({ where: { id } });
   return apiSuccess({ deleted: true });
 }
