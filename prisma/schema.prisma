@@ -28,7 +28,6 @@ model User {
 
   createdExams Exam[]           @relation("ExamCreator")
   invitations  ExamInvitation[] @relation("InvitationCreator")
-  otpSessions  OtpSession[]
 
   @@map("users")
 }
@@ -43,8 +42,6 @@ model OtpSession {
   expiresAt DateTime
   isUsed    Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  user User? @relation(fields: [email], references: [email])
 
   @@map("otp_sessions")
 }
