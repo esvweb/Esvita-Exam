@@ -10,6 +10,7 @@ import type { Language } from '@/types';
 interface QuestionOption { key: string; value: string; }
 interface Question {
   id: string;
+  type: string;
   questionText: string;
   options: QuestionOption[];
   answered: boolean;
@@ -211,6 +212,9 @@ export default function ExamTakePage() {
               <div className="px-6 py-5 border-b border-slate-100 bg-slate-50">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="badge-blue text-xs">Question {currentIdx + 1}</span>
+                  {currentQuestion.type === 'short_answer' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">✏️ Short Answer</span>
+                  )}
                   {answers[currentQuestion.id] !== undefined && (
                     <span className={`badge text-xs ${answers[currentQuestion.id] !== null ? 'badge-green' : 'badge-gray'}`}>
                       {answers[currentQuestion.id] !== null ? 'Answered' : 'Skipped'}
@@ -222,28 +226,57 @@ export default function ExamTakePage() {
                 </p>
               </div>
 
-              <div className="p-6 space-y-2.5">
-                {currentQuestion.options.map((option) => {
-                  const isSelected = answers[currentQuestion.id] === option.key;
-                  return (
-                    <button
-                      key={option.key}
-                      onClick={() => handleAnswer(currentQuestion.id, option.key)}
-                      className={`w-full text-left flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 text-blue-800'
-                          : 'border-slate-200 text-slate-700 hover:border-blue-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-sm flex-shrink-0 transition-all ${
-                        isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 text-slate-500'
-                      }`}>
-                        {isSelected ? <CheckCircle2 size={16} /> : option.key}
-                      </div>
-                      <span className="flex-1 text-sm leading-snug">{option.value}</span>
-                    </button>
-                  );
-                })}
+              <div className="p-6">
+                {currentQuestion.type === 'short_answer' ? (
+                  <div>
+                    <p className="text-xs text-slate-500 mb-2">Write your answer below:</p>
+                    <textarea
+                      rows={6}
+                      className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 resize-none transition-colors"
+                      placeholder="Type your answer here…"
+                      value={answers[currentQuestion.id] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAnswers((prev) => ({ ...prev, [currentQuestion.id]: val || null }));
+                      }}
+                      onBlur={() => {
+                        const val = answers[currentQuestion.id] || null;
+                        fetch('/api/exam/answer', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ sessionId, questionId: currentQuestion.id, selectedAnswer: val }),
+                        });
+                      }}
+                    />
+                    <p className="text-xs text-slate-400 mt-1 text-right">
+                      {(answers[currentQuestion.id] || '').length} characters
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {currentQuestion.options.map((option) => {
+                      const isSelected = answers[currentQuestion.id] === option.key;
+                      return (
+                        <button
+                          key={option.key}
+                          onClick={() => handleAnswer(currentQuestion.id, option.key)}
+                          className={`w-full text-left flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50 text-blue-800'
+                              : 'border-slate-200 text-slate-700 hover:border-blue-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-sm flex-shrink-0 transition-all ${
+                            isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 text-slate-500'
+                          }`}>
+                            {isSelected ? <CheckCircle2 size={16} /> : option.key}
+                          </div>
+                          <span className="flex-1 text-sm leading-snug">{option.value}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

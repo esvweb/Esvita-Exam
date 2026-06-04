@@ -69,22 +69,24 @@ export async function GET(req: NextRequest) {
       const langSuffix = lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
       const localTitle = (exam as Record<string, unknown>)[`title${langSuffix}`] as string || examTitle;
 
-      const wrongAnswerData = session.answers.map((a) => {
-        const q = a.question;
-        const qText = (q as Record<string, unknown>)[`question${langSuffix}`] as string || q.questionEn || '';
-        const expText = (q as Record<string, unknown>)[`explanation${langSuffix}`] as string || q.explanationEn || '';
-        const optsRaw = (q as Record<string, unknown>)[`options${langSuffix}`] as string || q.optionsEn || '[]';
-        let opts: { key: string; value: string }[] = [];
-        try { opts = JSON.parse(optsRaw); } catch {}
-        const correctOpt = opts.find((o) => o.key === q.correctAnswer);
-        const selectedOpt = opts.find((o) => o.key === a.selectedAnswer);
-        return {
-          questionText: qText,
-          selectedAnswer: selectedOpt ? `${selectedOpt.key}. ${selectedOpt.value}` : a.selectedAnswer || '',
-          correctAnswer: correctOpt ? `${correctOpt.key}. ${correctOpt.value}` : q.correctAnswer,
-          explanation: expText,
-        };
-      });
+      const wrongAnswerData = session.answers
+        .filter((a) => a.question.type !== 'short_answer' && a.isCorrect === false)
+        .map((a) => {
+          const q = a.question;
+          const qText = (q as Record<string, unknown>)[`question${langSuffix}`] as string || q.questionEn || '';
+          const expText = (q as Record<string, unknown>)[`explanation${langSuffix}`] as string || q.explanationEn || '';
+          const optsRaw = (q as Record<string, unknown>)[`options${langSuffix}`] as string || q.optionsEn || '[]';
+          let opts: { key: string; value: string }[] = [];
+          try { opts = JSON.parse(optsRaw); } catch {}
+          const correctOpt = opts.find((o) => o.key === q.correctAnswer);
+          const selectedOpt = opts.find((o) => o.key === a.selectedAnswer);
+          return {
+            questionText: qText,
+            selectedAnswer: selectedOpt ? `${selectedOpt.key}. ${selectedOpt.value}` : a.selectedAnswer || '',
+            correctAnswer: correctOpt ? `${correctOpt.key}. ${correctOpt.value}` : (q.correctAnswer ?? ''),
+            explanation: expText,
+          };
+        });
 
       const emailData: ExamResultData = {
         candidateName,

@@ -10,6 +10,7 @@ export const ROLE_LABELS: Record<string, string> = {
   team_leader: 'Team Leader',
   staff: 'Staff',
   advisor: 'Advisor',
+  training_supervisor: 'Training Supervisor',
 };
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -19,6 +20,7 @@ export const ROLE_COLORS: Record<string, string> = {
   team_leader: 'badge-amber',
   staff: 'badge-gray',
   advisor: 'badge-yellow',
+  training_supervisor: 'badge-teal',
 };
 
 /** Can create / edit records */
@@ -59,6 +61,16 @@ export function isTeamLeader(session: SessionPayload): boolean {
 /** Can access admin management areas (not team_leader or staff/advisor) */
 export function isManager(session: SessionPayload): boolean {
   return ['super_admin', 'admin', 'moderator'].includes(session.role);
+}
+
+/** Can review and score short-answer exam responses */
+export function canReview(session: SessionPayload): boolean {
+  return ['super_admin', 'admin', 'moderator', 'training_supervisor'].includes(session.role);
+}
+
+/** Training supervisor — only accesses the review module */
+export function isTrainingSupervisor(session: SessionPayload): boolean {
+  return session.role === 'training_supervisor';
 }
 
 /** Returns a 403 JSON response */

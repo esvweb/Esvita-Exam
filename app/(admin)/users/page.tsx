@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   Users, Plus, Shield, UserCheck, RefreshCw, Trash2, Mail,
   Pencil, UsersRound, Sparkles, Eye, UserSquare2, ArrowRight,
-  Users2, RotateCcw, Archive, Search,
+  Users2, RotateCcw, Archive, Search, BookOpenCheck,
 } from 'lucide-react';
 import { formatDateTime, LANGUAGE_FLAGS, LANGUAGE_LABELS } from '@/lib/utils';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/permissions';
@@ -37,20 +37,21 @@ type StatusFilter = 'active' | 'passive' | 'archived' | 'all';
 
 /* ─────────── Role config ─────────── */
 const USER_ROLES = [
-  { value: 'super_admin', label: 'Super Admin', desc: 'Full system access including user management' },
-  { value: 'admin',       label: 'Admin',       desc: 'Full access except user management' },
-  { value: 'moderator',   label: 'Moderator',   desc: 'Can manage exams, teams and audience — no delete access' },
-  { value: 'team_leader', label: 'Team Leader', desc: "Can view their team's exam results only (must be assigned a team)" },
-  { value: 'staff',       label: 'Staff',       desc: 'Read-only access to all sections (administrative office staff)' },
-  { value: 'advisor',     label: 'Advisor',     desc: 'Sees only their own exam scores on the Exams page (medical sales team)' },
-  { value: 'candidate',   label: 'Exam Candidate', desc: 'Exam candidate who can be invited to exams' },
+  { value: 'super_admin',         label: 'Super Admin',         desc: 'Full system access including user management' },
+  { value: 'admin',               label: 'Admin',               desc: 'Full access except user management' },
+  { value: 'moderator',           label: 'Moderator',           desc: 'Can manage exams, teams and audience — no delete access' },
+  { value: 'team_leader',         label: 'Team Leader',         desc: "Can view their team's exam results only (must be assigned a team)" },
+  { value: 'training_supervisor', label: 'Training Supervisor', desc: 'Can read and score short-answer exam responses — no exam management access' },
+  { value: 'staff',               label: 'Staff',               desc: 'Read-only access to all sections (administrative office staff)' },
+  { value: 'advisor',             label: 'Advisor',             desc: 'Sees only their own exam scores on the Exams page (medical sales team)' },
+  { value: 'candidate',           label: 'Exam Candidate',      desc: 'Exam candidate who can be invited to exams' },
 ];
 const MANAGER_ROLES     = ['super_admin', 'admin', 'moderator'];
-const BLOCK1_ROLES      = ['super_admin', 'admin', 'moderator', 'team_leader'];
+const BLOCK1_ROLES      = ['super_admin', 'admin', 'moderator', 'team_leader', 'training_supervisor'];
 const SYSTEM_USER_ROLES = ['staff', 'advisor'];
 
 // Roles that get the extended form (nickname, realName, language, team)
-const isSimpleRole = (role: string) => ['super_admin', 'admin', 'moderator'].includes(role);
+const isSimpleRole = (role: string) => ['super_admin', 'admin', 'moderator', 'training_supervisor', 'staff'].includes(role);
 
 /* ─────────── Audience status badge ─────────── */
 function audStatusBadge(a: Audience) {
@@ -348,11 +349,12 @@ export default function UsersPage() {
   const showStaffAdvisor = filterStatus === 'active' || filterStatus === 'all' || !filterStatus;
 
   const roleIconMap: Record<string, React.ReactNode> = {
-    super_admin: <Shield size={10} className="mr-1" />,
-    admin:       <UserCheck size={10} className="mr-1" />,
-    team_leader: <UsersRound size={10} className="mr-1" />,
-    advisor:     <Sparkles size={10} className="mr-1" />,
-    staff:       <Eye size={10} className="mr-1" />,
+    super_admin:         <Shield size={10} className="mr-1" />,
+    admin:               <UserCheck size={10} className="mr-1" />,
+    team_leader:         <UsersRound size={10} className="mr-1" />,
+    training_supervisor: <BookOpenCheck size={10} className="mr-1" />,
+    advisor:             <Sparkles size={10} className="mr-1" />,
+    staff:               <Eye size={10} className="mr-1" />,
   };
 
   /* ─────────── JSX ─────────── */

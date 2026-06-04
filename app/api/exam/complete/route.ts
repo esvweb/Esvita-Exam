@@ -25,18 +25,29 @@ export async function POST(req: NextRequest) {
   }
 
   const totalQuestions = session.totalQuestions || session.answers.length;
-  const correctCount = session.answers.filter((a) => a.isCorrect).length;
-  const wrongCount = session.answers.filter((a) => a.selectedAnswer !== null && !a.isCorrect).length;
+
+  // Split MC vs short-answer questions
+  const mcQuestions = session.exam.questions.filter((q) => q.type !== 'short_answer');
+  const saQuestions = session.exam.questions.filter((q) => q.type === 'short_answer');
+  const hasPendingReview = saQuestions.length > 0;
+
+  const correctCount = session.answers.filter((a) => a.isCorrect === true).length;
+  const wrongCount = session.answers.filter((a) => a.selectedAnswer !== null && a.isCorrect === false).length;
   const skippedCount = totalQuestions - session.answers.length;
-  const score = calculateScore(correctCount, totalQuestions);
+
+  // Score is based on MC questions only; SA questions contribute after supervisor review
+  const mcTotal = mcQuestions.length || totalQuestions;
+  const score = calculateScore(correctCount, mcTotal);
+
+  const sessionStatus = hasPendingReview ? 'pending_review' : 'completed';
 
   const now = new Date();
 
-  // Update session to completed
+  // Update session
   await prisma.examSession.update({
     where: { id: sessionId },
     data: {
-      status: 'completed',
+      status: sessionStatus,
       completedAt: now,
       score,
       correctCount,
@@ -100,5 +111,7 @@ export async function POST(req: NextRequest) {
     candidateName,
     examTitle,
     resultsDate: resultsDate.toISOString(),
+    pendingReview: hasPendingReview,
+    shortAnswerCount: saQuestions.length,
   });
 }

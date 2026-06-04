@@ -48,11 +48,13 @@ interface Team {
 
 interface Question {
   id: string; orderIndex: number;
+  type: string;
+  maxScore: number;
   questionEn: string | null; questionFra: string | null; questionRu: string | null;
   questionTr: string | null; questionIta: string | null;
   optionsEn: string | null; optionsFra: string | null; optionsRu: string | null;
   optionsTr: string | null; optionsIta: string | null;
-  correctAnswer: string;
+  correctAnswer: string | null;
   explanationEn: string | null; explanationFra: string | null; explanationRu: string | null;
   explanationTr: string | null; explanationIta: string | null;
 }
@@ -89,6 +91,8 @@ interface ExamSession {
 }
 
 const emptyQuestionForm = () => ({
+  type: 'multiple_choice' as 'multiple_choice' | 'short_answer',
+  maxScore: 100,
   questionEn: '', questionFra: '', questionRu: '', questionTr: '', questionIta: '',
   optionsEn: OPTION_KEYS.map((k) => ({ key: k, value: '' })),
   optionsFra: OPTION_KEYS.map((k) => ({ key: k, value: '' })),
@@ -262,13 +266,15 @@ export default function ExamDetailPage() {
   const handleSaveQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingQ(true);
+    const isShortAnswer = qForm.type === 'short_answer';
     const payload = {
       ...qForm,
-      optionsEn: qForm.optionsEn.filter((o) => o.value.trim()),
-      optionsFra: qForm.optionsFra.filter((o) => o.value.trim()),
-      optionsRu: qForm.optionsRu.filter((o) => o.value.trim()),
-      optionsTr: qForm.optionsTr.filter((o) => o.value.trim()),
-      optionsIta: qForm.optionsIta.filter((o) => o.value.trim()),
+      optionsEn: isShortAnswer ? [] : qForm.optionsEn.filter((o) => o.value.trim()),
+      optionsFra: isShortAnswer ? [] : qForm.optionsFra.filter((o) => o.value.trim()),
+      optionsRu: isShortAnswer ? [] : qForm.optionsRu.filter((o) => o.value.trim()),
+      optionsTr: isShortAnswer ? [] : qForm.optionsTr.filter((o) => o.value.trim()),
+      optionsIta: isShortAnswer ? [] : qForm.optionsIta.filter((o) => o.value.trim()),
+      correctAnswer: isShortAnswer ? undefined : qForm.correctAnswer,
     };
     const res = await fetch(`/api/admin/exams/${id}/questions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -497,7 +503,11 @@ export default function ExamDetailPage() {
                             <p className="text-xs text-slate-400 mt-2 italic">{q.explanationEn}</p>
                           )}
                         </div>
-                        <span className="badge-green text-xs flex-shrink-0">✓ {q.correctAnswer}</span>
+                        {q.type === 'short_answer' ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-semibold flex-shrink-0">✏️ Short Answer</span>
+                        ) : (
+                          <span className="badge-green text-xs flex-shrink-0">✓ {q.correctAnswer}</span>
+                        )}
                       </div>
                     </div>
                   );
@@ -704,6 +714,38 @@ export default function ExamDetailPage() {
       {/* ── Add Question Modal ─────────────────────────────────────────────────── */}
       <Modal isOpen={showQModal} onClose={() => setShowQModal(false)} title="Add Question" size="2xl">
         <form onSubmit={handleSaveQuestion} className="space-y-4">
+
+          {/* Question type selector */}
+          <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-fit">
+            {(['multiple_choice', 'short_answer'] as const).map((t) => (
+              <button
+                key={t} type="button"
+                onClick={() => setQForm((f) => ({ ...f, type: t }))}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                  qForm.type === t
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t === 'multiple_choice' ? '⊙ Multiple Choice' : '✏️ Short Answer'}
+              </button>
+            ))}
+          </div>
+
+          {/* Max score for short answer */}
+          {qForm.type === 'short_answer' && (
+            <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2.5">
+              <span className="text-xs font-semibold text-teal-700">Max Score (0–100)</span>
+              <input
+                type="number" min={1} max={100}
+                value={qForm.maxScore}
+                onChange={(e) => setQForm((f) => ({ ...f, maxScore: Math.max(1, Math.min(100, Number(e.target.value))) }))}
+                className="w-20 input text-center font-bold"
+              />
+              <span className="text-xs text-teal-600">pts — scored by Training Supervisor</span>
+            </div>
+          )}
+
           <div className="flex gap-1 border-b border-slate-200">
             {LANGS.map((l) => (
               <button key={l} type="button" onClick={() => setActiveLangTab(l)}
@@ -725,24 +767,26 @@ export default function ExamDetailPage() {
                   onChange={(e) => setQForm((f) => ({ ...f, [qLangKey(lang, 'question')]: e.target.value }))}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {OPTION_KEYS.map((key, ki) => {
-                  const opts = qForm[optKey(lang)] as { key: string; value: string }[];
-                  return (
-                    <div key={key} className="form-group">
-                      <label className="label text-xs">Option {key}</label>
-                      <input
-                        className={`input text-sm ${qForm.correctAnswer === key ? 'border-emerald-400 bg-emerald-50' : ''}`}
-                        placeholder={`Option ${key}`} value={opts[ki]?.value || ''}
-                        onChange={(e) => {
-                          const newOpts = [...opts]; newOpts[ki] = { key, value: e.target.value };
-                          setQForm((f) => ({ ...f, [optKey(lang)]: newOpts }));
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+              {qForm.type === 'multiple_choice' && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {OPTION_KEYS.map((key, ki) => {
+                    const opts = qForm[optKey(lang)] as { key: string; value: string }[];
+                    return (
+                      <div key={key} className="form-group">
+                        <label className="label text-xs">Option {key}</label>
+                        <input
+                          className={`input text-sm ${qForm.correctAnswer === key ? 'border-emerald-400 bg-emerald-50' : ''}`}
+                          placeholder={`Option ${key}`} value={opts[ki]?.value || ''}
+                          onChange={(e) => {
+                            const newOpts = [...opts]; newOpts[ki] = { key, value: e.target.value };
+                            setQForm((f) => ({ ...f, [optKey(lang)]: newOpts }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="form-group">
                 <label className="label">Explanation ({LANGUAGE_LABELS[lang]}) — optional</label>
                 <textarea className="input resize-none" rows={2}
@@ -753,18 +797,20 @@ export default function ExamDetailPage() {
               </div>
             </div>
           ))}
-          <div className="form-group border-t border-slate-100 pt-4">
-            <label className="label">Correct Answer</label>
-            <div className="flex gap-2">
-              {OPTION_KEYS.map((k) => (
-                <button key={k} type="button" onClick={() => setQForm((f) => ({ ...f, correctAnswer: k }))}
-                  className={`w-10 h-10 rounded-lg font-bold text-sm transition-all ${
-                    qForm.correctAnswer === k ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >{k}</button>
-              ))}
+          {qForm.type === 'multiple_choice' && (
+            <div className="form-group border-t border-slate-100 pt-4">
+              <label className="label">Correct Answer</label>
+              <div className="flex gap-2">
+                {OPTION_KEYS.map((k) => (
+                  <button key={k} type="button" onClick={() => setQForm((f) => ({ ...f, correctAnswer: k }))}
+                    className={`w-10 h-10 rounded-lg font-bold text-sm transition-all ${
+                      qForm.correctAnswer === k ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >{k}</button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex justify-end gap-3">
             <button type="button" className="btn-secondary" onClick={() => setShowQModal(false)}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={savingQ}>

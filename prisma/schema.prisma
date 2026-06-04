@@ -11,13 +11,13 @@ datasource db {
 
 // ─────────────────────────────────────────────
 // ADMIN USERS (Exam creators / administrators)
-// Roles: super_admin | admin | moderator | team_leader | staff
+// Roles: super_admin | admin | moderator | team_leader | staff | training_supervisor
 // ─────────────────────────────────────────────
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String
-  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "team_leader" | "staff"
+  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "team_leader" | "staff" | "training_supervisor"
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -144,6 +144,9 @@ model Question {
   examId     String
   orderIndex Int    @default(0)
 
+  // "multiple_choice" | "short_answer"
+  type String @default("multiple_choice")
+
   questionEn  String?
   questionFra String?
   questionRu  String?
@@ -156,7 +159,11 @@ model Question {
   optionsTr  String?
   optionsIta String?
 
-  correctAnswer String
+  // null for short_answer questions
+  correctAnswer String?
+
+  // Max score for short_answer questions (0-100)
+  maxScore Int @default(100)
 
   explanationEn  String?
   explanationFra String?
@@ -238,6 +245,12 @@ model ExamAnswer {
   selectedAnswer String?
   isCorrect      Boolean?
   answeredAt     DateTime @default(now())
+
+  // Manual scoring for short_answer questions (set by training_supervisor)
+  manualScore    Int?
+  manualFeedback String?
+  reviewedAt     DateTime?
+  reviewedBy     String?   // userId of the reviewer
 
   session  ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question Question    @relation(fields: [questionId], references: [id])

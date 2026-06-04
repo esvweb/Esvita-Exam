@@ -113,10 +113,13 @@ export async function GET(req: NextRequest) {
     let options: { key: string; value: string }[] = [];
     try { options = JSON.parse(optionsRaw); } catch { options = []; }
 
+    const qType = (q as Record<string, unknown>)['type'] as string || 'multiple_choice';
+
     return {
       id: q.id,
+      type: qType,
       questionText,
-      options,
+      options: qType === 'multiple_choice' ? options : [],
       answered: answeredIds.has(q.id),
     };
   }).filter(Boolean);

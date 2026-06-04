@@ -18,9 +18,13 @@ export async function POST(req: NextRequest) {
   const question = await prisma.question.findUnique({ where: { id: questionId } });
   if (!question) return apiError('Question not found', 404);
 
-  const isCorrect = selectedAnswer !== null
-    ? selectedAnswer.toUpperCase() === question.correctAnswer.toUpperCase()
-    : false;
+  const isShortAnswer = question.type === 'short_answer';
+
+  const isCorrect = isShortAnswer
+    ? null
+    : selectedAnswer !== null
+      ? selectedAnswer.toUpperCase() === (question.correctAnswer ?? '').toUpperCase()
+      : false;
 
   // Upsert answer (allow re-answering)
   await prisma.examAnswer.upsert({
@@ -29,5 +33,5 @@ export async function POST(req: NextRequest) {
     update: { selectedAnswer: selectedAnswer || null, isCorrect, answeredAt: new Date() },
   });
 
-  return apiSuccess({ isCorrect, correctAnswer: question.correctAnswer });
+  return apiSuccess({ isCorrect, correctAnswer: isShortAnswer ? null : question.correctAnswer });
 }
