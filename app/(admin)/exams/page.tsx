@@ -39,7 +39,7 @@ export default function ExamsPage() {
   const fetchExams = useCallback(async () => {
     setLoading(true);
     const [examsRes, meRes] = await Promise.all([
-      fetch('/api/admin/exams'),
+      fetch('/api/admin/exams?all=true'),
       fetch('/api/auth/me'),
     ]);
     if (examsRes.ok) setExams(await examsRes.json());

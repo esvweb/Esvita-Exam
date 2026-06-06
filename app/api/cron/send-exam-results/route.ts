@@ -3,38 +3,30 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
 import { sendExamResult } from '@/lib/email';
-import type { ExamResultData } from '@/lib/email';
+import { getLocalized } from '@/lib/utils';
 
-/**
- * GET /api/cron/send-exam-results
- * Called by Vercel Cron every 15 minutes.
- * Finds all exams whose validity period has expired and sends results
- * to all candidates who completed the exam.
- *
- * Secured with CRON_SECRET header.
- */
+// Called by Vercel Cron every 15 minutes.
+// Finds exams where either:
+// 1. resultAnnouncementDate has passed (preferred — explicit date set)
+// 2. validityStartedAt + validityHours has passed (fallback)
+// Sends results to all completed sessions; marks exam as closed.
 export async function GET(req: NextRequest) {
-  // Verify cron secret
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const authHeader = req.headers.get('authorization');
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const now = new Date();
 
-  // Find exams where validity has expired AND results haven't been sent yet
-  // validityStartedAt + validityHours * 3600 seconds < now
   const expiredExams = await prisma.exam.findMany({
     where: {
+      status: 'published',
       validityStartedAt: { not: null },
       resultsEmailSentAt: null,
     },
     include: {
       sessions: {
-        where: { status: 'completed' },
+        where: { status: 'completed', isPreview: false },
         include: {
           audience: true,
           answers: {
@@ -50,76 +42,70 @@ export async function GET(req: NextRequest) {
   let emailsSent = 0;
 
   for (const exam of expiredExams) {
-    // Check if validity has actually expired
     if (!exam.validityStartedAt) continue;
-    const validityEnd = new Date(
-      exam.validityStartedAt.getTime() + exam.validityHours * 3_600_000
-    );
-    if (now < validityEnd) continue; // Not yet expired
+
+    // Determine the release date: explicit announcement date OR validity expiry
+    const releaseDate = exam.resultAnnouncementDate
+      ?? new Date(exam.validityStartedAt.getTime() + exam.validityHours * 3_600_000);
+
+    if (now < releaseDate) continue;
 
     processed++;
-    const examTitle = exam.titleEn || exam.titleTr || 'Exam';
 
     for (const session of exam.sessions) {
       const candidateEmail = session.audience?.email || session.externalEmail || '';
-      const candidateName = session.audience?.name || session.externalName || 'Candidate';
+      // Always display nickname to the candidate
+      const candidateNickname =
+        session.audience?.nickname || session.audience?.name || session.externalName || 'Candidate';
       if (!candidateEmail) continue;
 
-      const lang = session.selectedLanguage;
-      const langSuffix = lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
-      const localTitle = (exam as Record<string, unknown>)[`title${langSuffix}`] as string || examTitle;
+      const lang = session.selectedLanguage as 'EN' | 'FRA' | 'RU' | 'TR' | 'ITA';
 
-      const wrongAnswerData = session.answers
-        .filter((a) => a.question.type !== 'short_answer' && a.isCorrect === false)
+      const wrongAnswers = session.answers
+        .filter((a) => a.question.type === 'multiple_choice' && a.isCorrect === false)
         .map((a) => {
           const q = a.question;
-          const qText = (q as Record<string, unknown>)[`question${langSuffix}`] as string || q.questionEn || '';
-          const expText = (q as Record<string, unknown>)[`explanation${langSuffix}`] as string || q.explanationEn || '';
-          const optsRaw = (q as Record<string, unknown>)[`options${langSuffix}`] as string || q.optionsEn || '[]';
+          const optsRaw = getLocalized(q as Record<string, unknown>, 'options', lang) || q.optionsEn || '[]';
           let opts: { key: string; value: string }[] = [];
-          try { opts = JSON.parse(optsRaw); } catch {}
+          try { opts = JSON.parse(optsRaw); } catch { /* ignored */ }
           const correctOpt = opts.find((o) => o.key === q.correctAnswer);
           const selectedOpt = opts.find((o) => o.key === a.selectedAnswer);
           return {
-            questionText: qText,
-            selectedAnswer: selectedOpt ? `${selectedOpt.key}. ${selectedOpt.value}` : a.selectedAnswer || '',
+            questionText: getLocalized(q as Record<string, unknown>, 'question', lang) || '',
+            selectedAnswer: selectedOpt ? `${selectedOpt.key}. ${selectedOpt.value}` : (a.selectedAnswer || ''),
             correctAnswer: correctOpt ? `${correctOpt.key}. ${correctOpt.value}` : (q.correctAnswer ?? ''),
-            explanation: expText,
+            explanation: getLocalized(q as Record<string, unknown>, 'explanation', lang) || '',
           };
         });
 
-      const emailData: ExamResultData = {
-        candidateName,
-        candidateEmail,
-        examTitle: localTitle,
-        score: session.score ?? 0,
-        totalQuestions: session.totalQuestions ?? 0,
-        correctCount: session.correctCount ?? 0,
-        wrongCount: session.wrongCount ?? 0,
-        skippedCount: session.skippedCount ?? 0,
-        language: lang,
-        wrongAnswers: wrongAnswerData,
-      };
-
       try {
-        await sendExamResult(emailData);
+        await sendExamResult({
+          candidateNickname,
+          candidateEmail,
+          examTitle: getLocalized(exam as unknown as Record<string, unknown>, 'title', lang) || exam.titleEn || 'Exam',
+          score: session.score ?? 0,
+          totalQuestions: session.totalQuestions ?? 0,
+          correctCount: session.correctCount ?? 0,
+          wrongCount: session.wrongCount ?? 0,
+          skippedCount: session.skippedCount ?? 0,
+          passMarkPercent: exam.passMarkPercent,
+          language: lang,
+          wrongAnswers,
+          audienceId: session.audienceId || undefined,
+          examId: exam.id,
+          sessionId: session.id,
+        });
         emailsSent++;
       } catch (err) {
         console.error(`Cron: Failed to send results to ${candidateEmail}:`, err);
       }
     }
 
-    // Mark this exam's results as sent
     await prisma.exam.update({
       where: { id: exam.id },
-      data: { resultsEmailSentAt: now },
+      data: { resultsEmailSentAt: now, status: 'closed', isActive: false },
     });
   }
 
-  return Response.json({
-    ok: true,
-    examsProcessed: processed,
-    emailsSent,
-    checkedAt: now.toISOString(),
-  });
+  return Response.json({ ok: true, examsProcessed: processed, emailsSent, checkedAt: now.toISOString() });
 }

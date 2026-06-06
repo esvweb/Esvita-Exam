@@ -92,7 +92,7 @@ interface ExamSession {
 
 const emptyQuestionForm = () => ({
   type: 'multiple_choice' as 'multiple_choice' | 'short_answer',
-  maxScore: 100,
+  maxScore: 10,
   questionEn: '', questionFra: '', questionRu: '', questionTr: '', questionIta: '',
   optionsEn: OPTION_KEYS.map((k) => ({ key: k, value: '' })),
   optionsFra: OPTION_KEYS.map((k) => ({ key: k, value: '' })),
@@ -100,7 +100,9 @@ const emptyQuestionForm = () => ({
   optionsTr: OPTION_KEYS.map((k) => ({ key: k, value: '' })),
   optionsIta: OPTION_KEYS.map((k) => ({ key: k, value: '' })),
   correctAnswer: 'A',
+  referenceAnswerEn: '', referenceAnswerFra: '', referenceAnswerRu: '', referenceAnswerTr: '', referenceAnswerIta: '',
   explanationEn: '', explanationFra: '', explanationRu: '', explanationTr: '', explanationIta: '',
+  saveToBank: false,
 });
 
 const SAMPLE_MD = `# Esvita Exam - Sample Import File
@@ -281,7 +283,30 @@ export default function ExamDetailPage() {
       body: JSON.stringify(payload),
     });
     if (res.ok) {
-      success('Question added successfully');
+      // Optionally save a copy to the question bank
+      if (qForm.saveToBank) {
+        await fetch('/api/admin/question-bank', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: qForm.type,
+            questionEn: qForm.questionEn, questionFra: qForm.questionFra,
+            questionRu: qForm.questionRu, questionTr: qForm.questionTr, questionIta: qForm.questionIta,
+            optionsEn: JSON.stringify(payload.optionsEn), optionsFra: JSON.stringify(payload.optionsFra),
+            optionsRu: JSON.stringify(payload.optionsRu), optionsTr: JSON.stringify(payload.optionsTr),
+            optionsIta: JSON.stringify(payload.optionsIta),
+            correctAnswer: payload.correctAnswer,
+            maxScore: qForm.maxScore,
+            referenceAnswerEn: qForm.referenceAnswerEn, referenceAnswerFra: qForm.referenceAnswerFra,
+            referenceAnswerRu: qForm.referenceAnswerRu, referenceAnswerTr: qForm.referenceAnswerTr,
+            referenceAnswerIta: qForm.referenceAnswerIta,
+            explanationEn: qForm.explanationEn, explanationFra: qForm.explanationFra,
+            explanationRu: qForm.explanationRu, explanationTr: qForm.explanationTr,
+            explanationIta: qForm.explanationIta,
+          }),
+        }).catch(() => {});
+      }
+      success('Question added' + (qForm.saveToBank ? ' and saved to Question Bank' : ''));
       setShowQModal(false); setQForm(emptyQuestionForm()); fetchExam();
     } else {
       const d = await res.json(); error(d.error || 'Failed to add question');
@@ -735,14 +760,14 @@ export default function ExamDetailPage() {
           {/* Max score for short answer */}
           {qForm.type === 'short_answer' && (
             <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2.5">
-              <span className="text-xs font-semibold text-teal-700">Max Score (0–100)</span>
+              <span className="text-xs font-semibold text-teal-700">Max Score (0–10)</span>
               <input
-                type="number" min={1} max={100}
+                type="number" min={1} max={10}
                 value={qForm.maxScore}
-                onChange={(e) => setQForm((f) => ({ ...f, maxScore: Math.max(1, Math.min(100, Number(e.target.value))) }))}
+                onChange={(e) => setQForm((f) => ({ ...f, maxScore: Math.max(1, Math.min(10, Number(e.target.value))) }))}
                 className="w-20 input text-center font-bold"
               />
-              <span className="text-xs text-teal-600">pts — scored by Training Supervisor</span>
+              <span className="text-xs text-teal-600">pts — reviewed by assigned supervisor</span>
             </div>
           )}
 
@@ -787,6 +812,16 @@ export default function ExamDetailPage() {
                   })}
                 </div>
               )}
+              {qForm.type === 'short_answer' && (
+                <div className="form-group mb-3">
+                  <label className="label">Reference Answer ({LANGUAGE_LABELS[lang]}) — used for AI scoring</label>
+                  <textarea className="input resize-none border-teal-300 focus:border-teal-500" rows={3}
+                    placeholder="Paste the ideal/model answer here. The AI will compare candidate responses against this."
+                    value={qForm[`referenceAnswer${lang.charAt(0)}${lang.slice(1).toLowerCase()}` as keyof typeof qForm] as string}
+                    onChange={(e) => setQForm((f) => ({ ...f, [`referenceAnswer${lang.charAt(0)}${lang.slice(1).toLowerCase()}`]: e.target.value }))}
+                  />
+                </div>
+              )}
               <div className="form-group">
                 <label className="label">Explanation ({LANGUAGE_LABELS[lang]}) — optional</label>
                 <textarea className="input resize-none" rows={2}
@@ -811,12 +846,23 @@ export default function ExamDetailPage() {
               </div>
             </div>
           )}
-          <div className="flex justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setShowQModal(false)}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={savingQ}>
-              {savingQ ? <Spinner size="sm" className="text-white" /> : <Plus size={15} />}
-              {savingQ ? 'Saving...' : 'Add Question'}
-            </button>
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded accent-blue-600"
+                checked={qForm.saveToBank}
+                onChange={(e) => setQForm((f) => ({ ...f, saveToBank: e.target.checked }))}
+              />
+              Save a copy to Question Bank
+            </label>
+            <div className="flex gap-3">
+              <button type="button" className="btn-secondary" onClick={() => setShowQModal(false)}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={savingQ}>
+                {savingQ ? <Spinner size="sm" className="text-white" /> : <Plus size={15} />}
+                {savingQ ? 'Saving...' : 'Add Question'}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>

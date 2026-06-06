@@ -2,14 +2,15 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
-import { apiError, apiSuccess, calculateScore, addHours } from '@/lib/utils';
+import { apiError, apiSuccess, calculateScore, addHours, getLocalized } from '@/lib/utils';
 import { sendCompletionConfirmation } from '@/lib/email';
+import { notifySupervisorNewSession } from '@/lib/notifications';
 
 export async function POST(req: NextRequest) {
   const { sessionId, timeTaken } = await req.json();
   if (!sessionId) return apiError('Session ID is required');
 
-  const session = await prisma.examSession.findUnique({
+  const examSession = await prisma.examSession.findUnique({
     where: { id: sessionId },
     include: {
       exam: { include: { questions: true } },
@@ -19,31 +20,43 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (!session) return apiError('Session not found', 404);
-  if (session.status === 'completed') {
-    return apiSuccess({ message: 'Already completed', sessionId });
+  if (!examSession) return apiError('Session not found', 404);
+
+  // Race-condition guard: if already completed, return idempotently
+  if (examSession.status !== 'in_progress') {
+    return apiSuccess({
+      message: 'Session already completed',
+      sessionId,
+      score: examSession.score,
+      pendingReview: examSession.status === 'pending_review',
+    });
   }
 
-  const totalQuestions = session.totalQuestions || session.answers.length;
+  // Skip preview sessions — don't write results to DB
+  if (examSession.isPreview) {
+    await prisma.examSession.update({
+      where: { id: sessionId },
+      data: { status: 'completed', completedAt: new Date() },
+    });
+    return apiSuccess({ sessionId, preview: true });
+  }
 
-  // Split MC vs short-answer questions
-  const mcQuestions = session.exam.questions.filter((q) => q.type !== 'short_answer');
-  const saQuestions = session.exam.questions.filter((q) => q.type === 'short_answer');
+  const totalQuestions = examSession.totalQuestions || examSession.exam.questions.length;
+  const mcQuestions = examSession.exam.questions.filter((q) => q.type === 'multiple_choice');
+  const saQuestions = examSession.exam.questions.filter((q) => q.type === 'short_answer');
   const hasPendingReview = saQuestions.length > 0;
 
-  const correctCount = session.answers.filter((a) => a.isCorrect === true).length;
-  const wrongCount = session.answers.filter((a) => a.selectedAnswer !== null && a.isCorrect === false).length;
-  const skippedCount = totalQuestions - session.answers.length;
+  const correctCount = examSession.answers.filter((a) => a.isCorrect === true).length;
+  const wrongCount = examSession.answers.filter(
+    (a) => a.selectedAnswer !== null && a.isCorrect === false
+  ).length;
+  const skippedCount = totalQuestions - examSession.answers.filter((a) => a.selectedAnswer !== null).length;
 
-  // Score is based on MC questions only; SA questions contribute after supervisor review
   const mcTotal = mcQuestions.length || totalQuestions;
   const score = calculateScore(correctCount, mcTotal);
-
   const sessionStatus = hasPendingReview ? 'pending_review' : 'completed';
-
   const now = new Date();
 
-  // Update session
   await prisma.examSession.update({
     where: { id: sessionId },
     data: {
@@ -54,51 +67,53 @@ export async function POST(req: NextRequest) {
       wrongCount,
       skippedCount,
       timeTaken: timeTaken || null,
-      completionEmailSent: false, // will be set true after email send below
     },
   });
 
-  // Mark invitation as used
-  if (session.invitationId) {
+  if (examSession.invitationId) {
     await prisma.examInvitation.update({
-      where: { id: session.invitationId },
+      where: { id: examSession.invitationId },
       data: { isUsed: true },
     });
   }
 
-  // Set validityStartedAt on the exam if not already set (first completion)
-  if (!session.exam.validityStartedAt) {
+  // Set validityStartedAt on exam if this is the first completion
+  if (!examSession.exam.validityStartedAt) {
     await prisma.exam.update({
-      where: { id: session.examId },
+      where: { id: examSession.examId },
       data: { validityStartedAt: now },
     });
   }
 
-  // Compute when results will be released
-  const validityStart = session.exam.validityStartedAt ?? now;
-  const resultsDate = addHours(validityStart, session.exam.validityHours);
+  const lang = examSession.selectedLanguage as 'EN' | 'FRA' | 'RU' | 'TR' | 'ITA';
+  const validityStart = examSession.exam.validityStartedAt ?? now;
+  const resultsDate = examSession.exam.resultAnnouncementDate
+    ?? addHours(validityStart, examSession.exam.validityHours);
 
-  const candidateEmail = session.audience?.email || session.externalEmail || '';
-  const candidateName = session.audience?.name || session.externalName || 'Candidate';
-  const lang = session.selectedLanguage;
-  const langSuffix = lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
-  const examTitle = (session.exam as Record<string, unknown>)[`title${langSuffix}`] as string
-    || session.exam.titleEn || 'Exam';
+  const candidateEmail = examSession.audience?.email || examSession.externalEmail || '';
+  const candidateNickname =
+    examSession.audience?.nickname || examSession.audience?.name || examSession.externalName || 'Candidate';
+  const examTitle = getLocalized(examSession.exam, 'title', lang) || examSession.exam.titleEn || 'Exam';
 
-  // Send completion confirmation email (NOT result — result comes from cron after validity expires)
   if (candidateEmail) {
     try {
-      await sendCompletionConfirmation(candidateEmail, candidateName, examTitle, resultsDate);
+      await sendCompletionConfirmation(candidateEmail, candidateNickname, examTitle, resultsDate, {
+        audienceId: examSession.audienceId || undefined,
+        examId: examSession.examId,
+        sessionId,
+      });
       await prisma.examSession.update({
         where: { id: sessionId },
         data: { completionEmailSent: true },
       });
-    } catch (emailErr) {
-      console.error('Failed to send completion confirmation email:', emailErr);
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`\n📧 DEV COMPLETION for ${candidateEmail}: Score=${score}%, Results at ${resultsDate.toISOString()}\n`);
-      }
+    } catch (err) {
+      console.error('Completion email failed:', err);
     }
+  }
+
+  // Notify assigned supervisor if there are short-answer questions to review
+  if (hasPendingReview && examSession.exam.supervisorId) {
+    await notifySupervisorNewSession(examSession.exam.supervisorId, examTitle, sessionId);
   }
 
   return apiSuccess({
@@ -108,7 +123,7 @@ export async function POST(req: NextRequest) {
     correctCount,
     wrongCount,
     skippedCount,
-    candidateName,
+    candidateNickname,
     examTitle,
     resultsDate: resultsDate.toISOString(),
     pendingReview: hasPendingReview,

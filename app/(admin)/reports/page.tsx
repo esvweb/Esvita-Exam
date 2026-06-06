@@ -13,10 +13,6 @@ import Spinner from '@/components/ui/Spinner';
 import PageTransition from '@/components/ui/PageTransition';
 import { formatDateTime, LANGUAGE_FLAGS } from '@/lib/utils';
 import type { Language } from '@/types';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend
-} from 'recharts';
 
 interface QuestionAnswer {
   index: number;
@@ -185,52 +181,64 @@ export default function ReportsPage() {
         {/* Charts */}
         {rows.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Score distribution — CSS bars */}
             <div className="card p-5">
               <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
                 <BarChart3 size={16} className="text-blue-600" /> Score Distribution
               </h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={scoreBuckets} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                  <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} allowDecimals={false} />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (active && payload?.[0]) {
-                        return (
-                          <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-xs">
-                            <p className="font-semibold">{payload[0].payload.label}</p>
-                            <p className="text-slate-600">{payload[0].value} candidates</p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                    {scoreBuckets.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="space-y-3">
+                {scoreBuckets.map((bucket) => (
+                  <div key={bucket.label}>
+                    <div className="flex justify-between text-xs text-slate-500 mb-1">
+                      <span>{bucket.label}</span>
+                      <span className="font-semibold">{bucket.count}</span>
+                    </div>
+                    <div className="h-5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: totalAttempts > 0 ? `${(bucket.count / totalAttempts) * 100}%` : '0%',
+                          backgroundColor: bucket.fill,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
+            {/* Pass/fail breakdown — CSS segments */}
             <div className="card p-5">
               <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
                 <Award size={16} className="text-emerald-600" /> Pass / Fail Breakdown
               </h3>
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name"
-                      cx="50%" cy="50%" outerRadius={75} innerRadius={40} paddingAngle={3}>
-                      {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip formatter={(value) => [`${value} candidates`, '']} />
-                    <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="space-y-3">
+                  {/* Segmented bar */}
+                  <div className="flex h-6 rounded-full overflow-hidden gap-0.5">
+                    {pieData.map((d) => (
+                      <div
+                        key={d.name}
+                        style={{ width: `${(d.value / totalAttempts) * 100}%`, backgroundColor: d.color }}
+                        title={`${d.name}: ${d.value}`}
+                      />
+                    ))}
+                  </div>
+                  {/* Legend */}
+                  <div className="space-y-2 mt-3">
+                    {pieData.map((d) => (
+                      <div key={d.name} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                          <span className="text-slate-600">{d.name}</span>
+                        </div>
+                        <span className="font-semibold text-slate-800">
+                          {d.value} <span className="text-xs text-slate-400 font-normal">({Math.round((d.value / totalAttempts) * 100)}%)</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <div className="h-48 flex items-center justify-center text-slate-300 text-sm">No data</div>
               )}

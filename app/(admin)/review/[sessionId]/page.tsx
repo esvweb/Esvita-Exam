@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Header from '@/components/admin/Header';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import {
   ArrowLeft, CheckCircle2, Clock, Send, User, FileText,
-  MessageSquare, Star,
+  MessageSquare, Star, Sparkles, ThumbsUp, Edit3, BookOpen,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDateTime, LANGUAGE_FLAGS, LANGUAGE_LABELS } from '@/lib/utils';
@@ -17,21 +17,22 @@ interface ShortAnswer {
   answerId: string;
   questionId: string;
   questionText: string;
+  referenceAnswer: string;
   answerText: string;
   maxScore: number;
   manualScore: number | null;
   manualFeedback: string | null;
   reviewedAt: string | null;
   reviewedBy: string | null;
+  aiSuggestedScore: number | null;
+  aiSuggestionStatus: string | null;
 }
 
 interface ReviewSession {
   sessionId: string;
+  examId: string;
   examTitle: string;
-  candidateName: string;
-  candidateEmail: string;
-  nickname: string | null;
-  realName: string | null;
+  candidateNickname: string;
   selectedLanguage: string;
   completedAt: string | null;
   status: string;
@@ -40,9 +41,15 @@ interface ReviewSession {
   shortAnswers: ShortAnswer[];
 }
 
+interface AiState {
+  loading: boolean;
+  score: number | null;
+  reasoning: string;
+  status: 'idle' | 'suggested' | 'accepted' | 'revised';
+}
+
 export default function ReviewSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const router = useRouter();
   const { success, error } = useToast();
 
   const [session, setSession] = useState<ReviewSession | null>(null);
@@ -51,31 +58,82 @@ export default function ReviewSessionPage() {
 
   // Local score/feedback state keyed by answerId
   const [scores, setScores] = useState<Record<string, { score: string; feedback: string }>>({});
+  // AI state per answerId
+  const [aiStates, setAiStates] = useState<Record<string, AiState>>({});
 
   const fetchSession = useCallback(async () => {
     const res = await fetch(`/api/admin/review/sessions/${sessionId}`);
     if (res.ok) {
       const data: ReviewSession = await res.json();
       setSession(data);
-      // Pre-populate existing scores
+
       const initial: Record<string, { score: string; feedback: string }> = {};
+      const initialAi: Record<string, AiState> = {};
+
       data.shortAnswers.forEach((a) => {
         initial[a.answerId] = {
           score: a.manualScore !== null ? String(a.manualScore) : '',
           feedback: a.manualFeedback || '',
         };
+        // Seed AI state from persisted values
+        initialAi[a.answerId] = {
+          loading: false,
+          score: a.aiSuggestedScore ?? null,
+          reasoning: '',
+          status:
+            a.aiSuggestionStatus === 'accepted' ? 'accepted'
+            : a.aiSuggestionStatus === 'revised' ? 'revised'
+            : a.aiSuggestedScore !== null ? 'suggested'
+            : 'idle',
+        };
       });
+
       setScores(initial);
+      setAiStates(initialAi);
     }
     setLoading(false);
   }, [sessionId]);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
+  const handleGetAiScore = async (answerId: string) => {
+    setAiStates((prev) => ({ ...prev, [answerId]: { ...prev[answerId], loading: true } }));
+    const res = await fetch(`/api/admin/review/sessions/${sessionId}/ai-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answerId }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setAiStates((prev) => ({
+        ...prev,
+        [answerId]: {
+          loading: false,
+          score: data.suggestedScore,
+          reasoning: data.reasoning || '',
+          status: 'suggested',
+        },
+      }));
+    } else {
+      error(data.error || 'AI scoring failed');
+      setAiStates((prev) => ({ ...prev, [answerId]: { ...prev[answerId], loading: false } }));
+    }
+  };
+
+  const handleAcceptAiScore = (answerId: string) => {
+    const ai = aiStates[answerId];
+    if (ai?.score === null || ai?.score === undefined) return;
+    setScores((prev) => ({ ...prev, [answerId]: { ...prev[answerId], score: String(ai.score) } }));
+    setAiStates((prev) => ({ ...prev, [answerId]: { ...prev[answerId], status: 'accepted' } }));
+  };
+
+  const handleReviseAiScore = (answerId: string) => {
+    setAiStates((prev) => ({ ...prev, [answerId]: { ...prev[answerId], status: 'revised' } }));
+  };
+
   const handleSave = async () => {
     if (!session) return;
 
-    // Validate all answered questions have a score
     const missing = session.shortAnswers.filter((a) => {
       const s = scores[a.answerId];
       return !s || s.score.trim() === '';
@@ -86,11 +144,20 @@ export default function ReviewSessionPage() {
       return;
     }
 
-    const payload = session.shortAnswers.map((a) => ({
-      answerId: a.answerId,
-      manualScore: parseInt(scores[a.answerId]?.score || '0', 10),
-      manualFeedback: scores[a.answerId]?.feedback || '',
-    }));
+    const payload = session.shortAnswers.map((a) => {
+      const ai = aiStates[a.answerId];
+      const aiStatus: 'accepted' | 'revised' | undefined =
+        ai?.status === 'accepted' ? 'accepted'
+        : ai?.status === 'revised' ? 'revised'
+        : undefined;
+
+      return {
+        answerId: a.answerId,
+        manualScore: parseInt(scores[a.answerId]?.score || '0', 10),
+        manualFeedback: scores[a.answerId]?.feedback || '',
+        ...(aiStatus ? { aiSuggestionStatus: aiStatus } : {}),
+      };
+    });
 
     setSaving(true);
     const res = await fetch(`/api/admin/review/sessions/${sessionId}`, {
@@ -128,10 +195,7 @@ export default function ReviewSessionPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header
-        title="Review Session"
-        subtitle={session.examTitle}
-      />
+      <Header title="Review Session" subtitle={session.examTitle} />
 
       <div className="flex-1 overflow-auto p-6">
         {/* Back + status bar */}
@@ -162,23 +226,12 @@ export default function ReviewSessionPage() {
                   <User size={18} className="text-blue-600" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-800 text-sm truncate">{session.candidateName}</p>
-                  {session.nickname && (
-                    <p className="text-xs text-slate-400 truncate">aka {session.nickname}</p>
-                  )}
+                  <p className="font-semibold text-slate-800 text-sm truncate">
+                    {session.candidateNickname}
+                  </p>
                 </div>
               </div>
               <dl className="space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Email</dt>
-                  <dd className="text-slate-600 truncate ml-2 max-w-[60%] text-right">{session.candidateEmail}</dd>
-                </div>
-                {session.realName && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-400">Legal name</dt>
-                    <dd className="text-slate-600">{session.realName}</dd>
-                  </div>
-                )}
                 <div className="flex justify-between">
                   <dt className="text-slate-400">Language</dt>
                   <dd className="text-slate-600">
@@ -199,9 +252,9 @@ export default function ReviewSessionPage() {
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Score</p>
               <div className="text-center py-2">
                 <p className={`text-5xl font-bold ${
-                  session.score === null ? 'text-slate-300' :
-                  session.score >= 70 ? 'text-emerald-600' :
-                  session.score >= 50 ? 'text-amber-500' : 'text-red-500'
+                  session.score === null ? 'text-slate-300'
+                  : session.score >= 70 ? 'text-emerald-600'
+                  : session.score >= 50 ? 'text-amber-500' : 'text-red-500'
                 }`}>
                   {session.score !== null ? `${session.score}%` : '—'}
                 </p>
@@ -220,17 +273,11 @@ export default function ReviewSessionPage() {
               disabled={saving || !allScored}
               className="w-full btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {saving ? (
-                <Spinner size="sm" className="text-white" />
-              ) : (
-                <Send size={15} />
-              )}
+              {saving ? <Spinner size="sm" className="text-white" /> : <Send size={15} />}
               {saving ? 'Saving…' : 'Save All Scores'}
             </button>
             {!allScored && (
-              <p className="text-xs text-center text-slate-400">
-                Score all questions to save
-              </p>
+              <p className="text-xs text-center text-slate-400">Score all questions to save</p>
             )}
           </div>
 
@@ -247,6 +294,7 @@ export default function ReviewSessionPage() {
                 const scoreNum = parseInt(localScore.score, 10);
                 const isValidScore = !isNaN(scoreNum) && scoreNum >= 0 && scoreNum <= a.maxScore;
                 const isScored = localScore.score.trim() !== '';
+                const ai = aiStates[a.answerId] || { loading: false, score: null, reasoning: '', status: 'idle' };
 
                 return (
                   <div
@@ -261,30 +309,109 @@ export default function ReviewSessionPage() {
                         <span className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-500 flex-shrink-0">
                           {idx + 1}
                         </span>
-                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Question</span>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                          Short Answer
+                        </span>
                       </div>
-                      <span className="text-xs text-slate-400">Max: {a.maxScore} pts</span>
+                      <span className="text-xs text-slate-400">Max: {a.maxScore} / 10 pts</span>
                     </div>
 
                     <p className="text-sm font-medium text-slate-800 mb-4 leading-relaxed">
                       {a.questionText || <span className="text-slate-400 italic">No question text</span>}
                     </p>
 
+                    {/* Reference answer (visible to supervisor) */}
+                    {a.referenceAnswer && (
+                      <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 mb-3">
+                        <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                          <BookOpen size={10} />
+                          Reference Answer
+                        </p>
+                        <p className="text-sm text-teal-800 whitespace-pre-wrap leading-relaxed">
+                          {a.referenceAnswer}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Candidate answer */}
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                         <MessageSquare size={10} />
-                        Candidate's Answer
+                        Candidate&apos;s Answer
                       </p>
                       <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                         {a.answerText || <span className="text-slate-400 italic">No answer provided</span>}
                       </p>
                     </div>
 
+                    {/* AI Score suggestion */}
+                    <div className="mb-4">
+                      {ai.status === 'idle' && (
+                        <button
+                          onClick={() => handleGetAiScore(a.answerId)}
+                          disabled={ai.loading || !a.answerText}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {ai.loading ? <Spinner size="sm" /> : <Sparkles size={12} />}
+                          {ai.loading ? 'Getting AI score…' : 'Get AI Score'}
+                        </button>
+                      )}
+
+                      {(ai.status === 'suggested' || ai.status === 'accepted' || ai.status === 'revised') && ai.score !== null && (
+                        <div className="border border-indigo-200 bg-indigo-50 rounded-lg p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <Sparkles size={13} className="text-indigo-500" />
+                              <span className="text-xs font-semibold text-indigo-700">
+                                AI suggests: {ai.score} / 10
+                              </span>
+                              {ai.status === 'accepted' && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                                  <ThumbsUp size={9} /> Accepted
+                                </span>
+                              )}
+                              {ai.status === 'revised' && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                                  <Edit3 size={9} /> Revised manually
+                                </span>
+                              )}
+                            </div>
+                            {ai.status === 'suggested' && (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleAcceptAiScore(a.answerId)}
+                                  className="text-[10px] font-semibold px-2 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                                >
+                                  <ThumbsUp size={9} /> Accept
+                                </button>
+                                <button
+                                  onClick={() => handleReviseAiScore(a.answerId)}
+                                  className="text-[10px] font-semibold px-2 py-1 bg-white border border-slate-300 text-slate-600 rounded hover:bg-slate-50 transition-colors flex items-center gap-1"
+                                >
+                                  <Edit3 size={9} /> Revise
+                                </button>
+                              </div>
+                            )}
+                            {(ai.status === 'accepted' || ai.status === 'revised') && (
+                              <button
+                                onClick={() => handleGetAiScore(a.answerId)}
+                                className="text-[10px] text-indigo-500 hover:text-indigo-700 underline"
+                              >
+                                Re-score
+                              </button>
+                            )}
+                          </div>
+                          {ai.reasoning && (
+                            <p className="text-xs text-indigo-700 leading-relaxed">{ai.reasoning}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Scoring row */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
                       <div>
-                        <label className="text-xs font-semibold text-slate-500 mb-1 block flex items-center gap-1">
+                        <label className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1">
                           <Star size={11} />
                           Score (0–{a.maxScore})
                         </label>
@@ -293,12 +420,19 @@ export default function ReviewSessionPage() {
                           min={0}
                           max={a.maxScore}
                           value={localScore.score}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setScores((prev) => ({
                               ...prev,
                               [a.answerId]: { ...prev[a.answerId], score: e.target.value },
-                            }))
-                          }
+                            }));
+                            // If user manually changes score after accepting AI, mark as revised
+                            if (aiStates[a.answerId]?.status === 'accepted') {
+                              setAiStates((prev) => ({
+                                ...prev,
+                                [a.answerId]: { ...prev[a.answerId], status: 'revised' },
+                              }));
+                            }
+                          }}
                           className={`form-input w-full text-center font-bold text-lg ${
                             isScored && !isValidScore ? 'border-red-300 focus:ring-red-300' : ''
                           }`}

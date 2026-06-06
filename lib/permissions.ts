@@ -1,7 +1,10 @@
 import type { SessionPayload } from './auth';
 
-// Role hierarchy:
-// super_admin > admin > moderator > team_leader > staff | advisor
+// Role hierarchy: super_admin > admin > moderator > team_leader > staff
+// training_supervisor role has been removed.
+
+export const ROLES = ['super_admin', 'admin', 'moderator', 'team_leader', 'staff'] as const;
+export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -9,8 +12,6 @@ export const ROLE_LABELS: Record<string, string> = {
   moderator: 'Moderator',
   team_leader: 'Team Leader',
   staff: 'Staff',
-  advisor: 'Advisor',
-  training_supervisor: 'Training Supervisor',
 };
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -19,58 +20,221 @@ export const ROLE_COLORS: Record<string, string> = {
   moderator: 'badge-green',
   team_leader: 'badge-amber',
   staff: 'badge-gray',
-  advisor: 'badge-yellow',
-  training_supervisor: 'badge-teal',
 };
 
-/** Can create / edit records */
-export function canWrite(session: SessionPayload): boolean {
-  return ['super_admin', 'admin', 'moderator'].includes(session.role);
+// ── USER MANAGEMENT ───────────────────────────────────────────────────────────
+
+/** Create / edit / delete admin users */
+export function canManageUsers(s: SessionPayload) {
+  return s.role === 'super_admin';
 }
 
-/** Can delete records */
-export function canDelete(session: SessionPayload): boolean {
-  return ['super_admin', 'admin'].includes(session.role);
+/** Assign roles to users */
+export function canAssignRoles(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
 }
 
-/** Can manage user accounts */
-export function canManageUsers(session: SessionPayload): boolean {
-  return session.role === 'super_admin';
+/** View all users list */
+export function canViewUsers(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
 }
 
-/** Can invite / send exams to candidates */
-export function canInvite(session: SessionPayload): boolean {
-  return ['super_admin', 'admin', 'moderator'].includes(session.role);
+/** Super-admin-only: view email delivery logs */
+export function canViewEmailLogs(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
 }
 
-/** Read-only role (no write access at all) */
-export function isReadOnly(session: SessionPayload): boolean {
-  return session.role === 'staff' || session.role === 'advisor';
+// ── CANDIDATE MANAGEMENT ──────────────────────────────────────────────────────
+
+/** Create / edit candidates */
+export function canManageCandidates(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
 }
 
-/** Advisor — sees only their own exam scores, limited pages */
-export function isAdvisor(session: SessionPayload): boolean {
-  return session.role === 'advisor';
+/** Bulk CSV import */
+export function canBulkImportCandidates(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
 }
 
-/** Team leader — can only view their own team results */
-export function isTeamLeader(session: SessionPayload): boolean {
-  return session.role === 'team_leader';
+/** Archive / reset candidate */
+export function canArchiveCandidate(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
 }
 
-/** Can access admin management areas (not team_leader or staff/advisor) */
-export function isManager(session: SessionPayload): boolean {
-  return ['super_admin', 'admin', 'moderator'].includes(session.role);
+// ── TEAM MANAGEMENT ───────────────────────────────────────────────────────────
+
+/** Create / edit / delete teams */
+export function canManageTeams(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
 }
 
-/** Can review and score short-answer exam responses */
-export function canReview(session: SessionPayload): boolean {
-  return ['super_admin', 'admin', 'moderator', 'training_supervisor'].includes(session.role);
+/** Assign candidates to teams (team_leader = own team only, enforced in handler) */
+export function canAssignToTeams(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator', 'team_leader'].includes(s.role);
 }
 
-/** Training supervisor — only accesses the review module */
-export function isTrainingSupervisor(session: SessionPayload): boolean {
-  return session.role === 'training_supervisor';
+// ── EXAM MANAGEMENT ───────────────────────────────────────────────────────────
+
+/** Create new exam */
+export function canCreateExam(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Edit a draft exam */
+export function canEditDraftExam(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Edit a published / live exam */
+export function canEditLiveExam(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Delete exam */
+export function canDeleteExam(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Duplicate exam */
+export function canDuplicateExam(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Publish / unpublish exam */
+export function canPublishExam(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Assign supervisor to exam */
+export function canAssignSupervisor(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Set result announcement date */
+export function canSetAnnouncementDate(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Set per-exam pass mark */
+export function canSetPassMark(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Apply categories and tags */
+export function canApplyCategories(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Preview exam as candidate (no DB save) */
+export function canPreviewExam(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Bulk assign / individual invite */
+export function canInvite(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Resend OTP / invite */
+export function canResendInvite(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Manually release results early */
+export function canReleaseResults(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+// ── QUESTION BANK ─────────────────────────────────────────────────────────────
+
+export function canViewQuestionBank(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+export function canEditQuestionBank(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+export function canDeleteFromQuestionBank(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+export function canImportFromBank(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+// ── RESULTS & REVIEW ─────────────────────────────────────────────────────────
+
+/**
+ * Score SA questions:
+ * - super_admin: any exam
+ * - admin: only exams where they are the assigned supervisor
+ * Enforced in the handler by checking exam.supervisorId === userId for admin role.
+ */
+export function canScoreAnswers(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Override an existing SA score — super_admin only */
+export function canOverrideScore(s: SessionPayload) {
+  return s.role === 'super_admin';
+}
+
+/** Accept or revise AI score suggestion (same gate as scoring) */
+export function canReviewAiScore(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+// ── REPORTS & ANALYTICS ───────────────────────────────────────────────────────
+
+export function canViewAllReports(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+export function canViewPerQuestionAnalysis(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+export function canViewLongitudinal(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator', 'team_leader'].includes(s.role);
+}
+
+export function canViewTeamComparison(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator', 'team_leader'].includes(s.role);
+}
+
+export function canViewTeamAnalytics(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator', 'team_leader'].includes(s.role);
+}
+
+/** Export PDF/CSV — team_leader limited to own team data */
+export function canExportReports(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator', 'team_leader'].includes(s.role);
+}
+
+// ── CONVENIENCE HELPERS ───────────────────────────────────────────────────────
+
+/** Any write-capable role */
+export function canWrite(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+/** Any delete-capable role */
+export function canDelete(s: SessionPayload) {
+  return s.role === 'super_admin' || s.role === 'admin';
+}
+
+/** Manager-level (not team_leader or staff) */
+export function isManager(s: SessionPayload) {
+  return ['super_admin', 'admin', 'moderator'].includes(s.role);
+}
+
+export function isTeamLeader(s: SessionPayload) {
+  return s.role === 'team_leader';
+}
+
+export function isStaff(s: SessionPayload) {
+  return s.role === 'staff';
 }
 
 /** Returns a 403 JSON response */

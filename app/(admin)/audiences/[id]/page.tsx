@@ -13,10 +13,6 @@ import {
   TrendingUp, CheckCircle2, XCircle, Minus, Send,
 } from 'lucide-react';
 import Link from 'next/link';
-import {
-  XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Area, AreaChart
-} from 'recharts';
 
 interface AudienceSession {
   id: string;
@@ -202,36 +198,28 @@ export default function AudienceProfilePage() {
             <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <TrendingUp size={18} className="text-blue-600" /> Score Trend Over Time
             </h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ top: 5, right: 10, bottom: 0, left: -10 }}>
-                <defs>
-                  <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#94a3b8' }} tickFormatter={(v) => `${v}%`} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload?.[0]) {
-                      const d = payload[0].payload;
-                      return (
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs">
-                          <p className="font-semibold text-slate-700">{d.exam}</p>
-                          <p className="text-slate-400">{d.date}</p>
-                          <p className="text-blue-600 font-bold text-base mt-1">{d.score}%</p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <ReferenceLine y={60} stroke="#fbbf24" strokeDasharray="4 4" label={{ value: 'Pass 60%', fill: '#d97706', fontSize: 10 }} />
-                <Area type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={2.5} fill="url(#scoreGrad)" dot={{ r: 5, fill: '#3b82f6', strokeWidth: 0 }} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="space-y-3">
+              {chartData.map((d) => (
+                <div key={d.name}>
+                  <div className="flex justify-between text-xs text-slate-500 mb-1">
+                    <span className="truncate max-w-xs">{d.exam} <span className="text-slate-300 ml-1">{d.date}</span></span>
+                    <span className={`font-bold ml-2 flex-shrink-0 ${d.score >= 80 ? 'text-emerald-600' : d.score >= 60 ? 'text-yellow-600' : 'text-red-500'}`}>
+                      {d.score}%
+                    </span>
+                  </div>
+                  <div className="h-5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${d.score}%`,
+                        backgroundColor: d.score >= 80 ? '#22c55e' : d.score >= 60 ? '#eab308' : '#ef4444',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-slate-400 pt-1">Pass threshold: 60%</p>
+            </div>
           </div>
         )}
 

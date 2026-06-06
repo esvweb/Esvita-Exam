@@ -10,30 +10,33 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────
-// ADMIN USERS (Exam creators / administrators)
-// Roles: super_admin | admin | moderator | team_leader | staff | training_supervisor
+// ADMIN USERS
+// Roles: super_admin | admin | moderator | team_leader | staff
 // ─────────────────────────────────────────────
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String
-  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "team_leader" | "staff" | "training_supervisor"
+  role      String   @default("staff") // "super_admin" | "admin" | "moderator" | "team_leader" | "staff"
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // For team_leader: which team they oversee
   teamId String?
   team   Team?   @relation("TeamLeaders", fields: [teamId], references: [id])
 
-  createdExams Exam[]           @relation("ExamCreator")
-  invitations  ExamInvitation[] @relation("InvitationCreator")
+  createdExams     Exam[]           @relation("ExamCreator")
+  supervisedExams  Exam[]           @relation("ExamSupervisor")
+  invitations      ExamInvitation[] @relation("InvitationCreator")
+  questionBankItems QuestionBank[]  @relation("QuestionBankCreator")
+  notifications    Notification[]
+  auditLogs        AuditLog[]
 
   @@map("users")
 }
 
 // ─────────────────────────────────────────────
-// OTP SESSIONS (for admin login)
+// OTP SESSIONS (admin login)
 // ─────────────────────────────────────────────
 model OtpSession {
   id        String   @id @default(cuid())
@@ -47,7 +50,7 @@ model OtpSession {
 }
 
 // ─────────────────────────────────────────────
-// CANDIDATE OTP SESSIONS (for candidate portal login)
+// CANDIDATE OTP SESSIONS (candidate portal login)
 // ─────────────────────────────────────────────
 model CandidateOtpSession {
   id        String   @id @default(cuid())
@@ -61,7 +64,7 @@ model CandidateOtpSession {
 }
 
 // ─────────────────────────────────────────────
-// TEAMS (Group for organizing audiences)
+// TEAMS
 // ─────────────────────────────────────────────
 model Team {
   id        String   @id @default(cuid())
@@ -84,13 +87,19 @@ model Audience {
   id                String   @id @default(cuid())
   name              String
   email             String   @unique
-  preferredLanguage String   @default("EN") // EN | FRA | RU | TR | ITA
-  isActive          Boolean  @default(true)  // false = passive/paused
-  isArchived        Boolean  @default(false) // true = reset (old record preserved)
-  nickname          String?  // company nickname (can be reused after reset)
-  realName          String?  // real legal name (used to distinguish after reset)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  preferredLanguage String   @default("EN")
+  isActive          Boolean  @default(true)
+  isArchived        Boolean  @default(false)
+  nickname          String?
+  realName          String?
+
+  // Chain archived records for the same seat/nickname
+  predecessorId String?
+  predecessor   Audience?  @relation("SeatChain", fields: [predecessorId], references: [id])
+  successors    Audience[] @relation("SeatChain")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   teamId String?
   team   Team?   @relation(fields: [teamId], references: [id])
@@ -104,30 +113,48 @@ model Audience {
 // EXAMS
 // ─────────────────────────────────────────────
 model Exam {
-  id              String   @id @default(cuid())
-  titleEn         String?
-  titleFra        String?
-  titleRu         String?
-  titleTr         String?
-  titleIta        String?
-  descriptionEn   String?
-  descriptionFra  String?
-  descriptionRu   String?
-  descriptionTr   String?
-  descriptionIta  String?
-  timePerQuestion Int      @default(60)
-  isActive        Boolean  @default(true)
+  id             String  @id @default(cuid())
+  titleEn        String?
+  titleFra       String?
+  titleRu        String?
+  titleTr        String?
+  titleIta       String?
+  descriptionEn  String?
+  descriptionFra String?
+  descriptionRu  String?
+  descriptionTr  String?
+  descriptionIta String?
+  timePerQuestion Int     @default(60)
 
-  // Validity & result scheduling
-  validityHours      Int       @default(72) // how long until results are sent after first invite
-  validityStartedAt  DateTime? // set when first invitation is sent/assigned
-  resultsEmailSentAt DateTime? // set when bulk results email is dispatched by cron
+  // Lifecycle state: draft | scheduled | published | closed
+  status             String    @default("draft")
+  scheduledPublishAt DateTime? // auto-publish at this datetime
+  isActive           Boolean   @default(true) // legacy compat; reflects published state
+
+  // Validity & results
+  validityHours          Int       @default(72)
+  validityStartedAt      DateTime?
+  resultsEmailSentAt     DateTime?
+  resultAnnouncementDate DateTime? // supervisor deadline + manual release target
+
+  // Configuration
+  passMarkPercent Int @default(60)
+  categories      String[] @default([])
+  tags            String[] @default([])
+
+  // Supervisor assignment
+  supervisorId String?
+  supervisor   User?   @relation("ExamSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+
+  // Reminder tracking
+  supervisorReminderSentAt DateTime? // when the 24h reminder was sent to supervisor
+  candidateReminderSentAt  DateTime? // when the 24h pre-deadline reminder was sent
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   createdBy String?
-  creator   User?  @relation("ExamCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  creator   User?   @relation("ExamCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   questions   Question[]
   sessions    ExamSession[]
@@ -143,8 +170,55 @@ model Question {
   id         String @id @default(cuid())
   examId     String
   orderIndex Int    @default(0)
+  type       String @default("multiple_choice") // "multiple_choice" | "short_answer"
 
-  // "multiple_choice" | "short_answer"
+  questionEn  String?
+  questionFra String?
+  questionRu  String?
+  questionTr  String?
+  questionIta String?
+
+  optionsEn  String?
+  optionsFra String?
+  optionsRu  String?
+  optionsTr  String?
+  optionsIta String?
+
+  correctAnswer String? // null for short_answer
+
+  // Short-answer scoring: scale 0–10
+  maxScore Int @default(10)
+
+  // Reference answer for AI scoring (all languages)
+  referenceAnswerEn  String?
+  referenceAnswerFra String?
+  referenceAnswerRu  String?
+  referenceAnswerTr  String?
+  referenceAnswerIta String?
+
+  explanationEn  String?
+  explanationFra String?
+  explanationRu  String?
+  explanationTr  String?
+  explanationIta String?
+
+  // Link to question bank source (informational only, no cascade)
+  questionBankId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers ExamAnswer[]
+
+  @@map("questions")
+}
+
+// ─────────────────────────────────────────────
+// QUESTION BANK (shared library, copy-on-import)
+// ─────────────────────────────────────────────
+model QuestionBank {
+  id   String @id @default(cuid())
   type String @default("multiple_choice")
 
   questionEn  String?
@@ -159,11 +233,14 @@ model Question {
   optionsTr  String?
   optionsIta String?
 
-  // null for short_answer questions
   correctAnswer String?
+  maxScore      Int     @default(10)
 
-  // Max score for short_answer questions (0-100)
-  maxScore Int @default(100)
+  referenceAnswerEn  String?
+  referenceAnswerFra String?
+  referenceAnswerRu  String?
+  referenceAnswerTr  String?
+  referenceAnswerIta String?
 
   explanationEn  String?
   explanationFra String?
@@ -171,13 +248,16 @@ model Question {
   explanationTr  String?
   explanationIta String?
 
+  categories  String[] @default([])
+  tags        String[] @default([])
+  usedInCount Int      @default(0)
+
+  createdBy String?
+  creator   User?   @relation("QuestionBankCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
-  answers ExamAnswer[]
-
-  @@map("questions")
+  @@map("question_bank")
 }
 
 // ─────────────────────────────────────────────
@@ -195,8 +275,8 @@ model ExamInvitation {
   createdBy   String?
   createdAt   DateTime @default(now())
 
-  exam    Exam        @relation(fields: [examId], references: [id])
-  creator User?       @relation("InvitationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  exam     Exam        @relation(fields: [examId], references: [id])
+  creator  User?       @relation("InvitationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   sessions ExamSession[]
 
   @@map("exam_invitations")
@@ -223,9 +303,13 @@ model ExamSession {
   wrongCount       Int?
   skippedCount     Int?
   timeTaken        Int?
+  // in_progress | pending_review | completed
   status           String    @default("in_progress")
 
-  completionEmailSent Boolean @default(false) // completion confirmation email sent
+  completionEmailSent Boolean @default(false)
+
+  // Preview session — not saved to results, used only for admin exam preview
+  isPreview Boolean @default(false)
 
   exam       Exam            @relation(fields: [examId], references: [id])
   audience   Audience?       @relation(fields: [audienceId], references: [id])
@@ -246,15 +330,76 @@ model ExamAnswer {
   isCorrect      Boolean?
   answeredAt     DateTime @default(now())
 
-  // Manual scoring for short_answer questions (set by training_supervisor)
+  // Manual scoring for short_answer (0–10)
   manualScore    Int?
   manualFeedback String?
   reviewedAt     DateTime?
-  reviewedBy     String?   // userId of the reviewer
+  reviewedBy     String?
+
+  // AI suggested score
+  aiSuggestedScore   Float?
+  aiSuggestionStatus String? // "pending" | "accepted" | "revised"
 
   session  ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question Question    @relation(fields: [questionId], references: [id])
 
   @@unique([sessionId, questionId])
   @@map("exam_answers")
+}
+
+// ─────────────────────────────────────────────
+// EMAIL LOGS
+// ─────────────────────────────────────────────
+model EmailLog {
+  id         String   @id @default(cuid())
+  to         String
+  subject    String
+  type       String   // otp | invitation | result | completion | reminder | supervisor_reminder | assignment
+  status     String   @default("sent") // sent | failed
+  error      String?
+  retryCount Int      @default(0)
+  sentAt     DateTime @default(now())
+
+  audienceId String?
+  examId     String?
+  sessionId  String?
+
+  @@map("email_logs")
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOGS
+// ─────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  userEmail String
+  userRole  String
+  action    String   // create | update | delete | publish | assign | release | duplicate
+  entity    String   // exam | question | audience | user | team | question_bank
+  entityId  String?
+  changes   String?  // JSON description of what changed
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────
+// IN-APP NOTIFICATIONS
+// ─────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // review_needed | deadline_reminder | results_released | exam_assigned
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }
