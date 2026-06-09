@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Translation failed';
-    return apiError(message.includes('GEMINI_API_KEY') ? 'AI translation is not configured (missing GEMINI_API_KEY)' : message, 502);
+    return apiError(message.includes('OPENAI_API_KEY') ? 'AI translation is not configured (missing OPENAI_API_KEY)' : message, 502);
   }
 
   // Build update payload from translations

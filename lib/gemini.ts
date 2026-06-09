@@ -1,13 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
-
-// ── Clients ───────────────────────────────────────────────────────────────────
-
-function getGeminiClient() {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('GEMINI_API_KEY is not set');
-  return new GoogleGenerativeAI(key);
-}
 
 function getOpenAIClient() {
   const key = process.env.OPENAI_API_KEY;
@@ -15,7 +6,7 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey: key });
 }
 
-// ── AI Score Suggestion (Gemini) ──────────────────────────────────────────────
+// ── AI Score Suggestion (OpenAI) ─────────────────────────────────────────────
 
 export interface ScoreSuggestionResult {
   score: number;  // 0–10
@@ -27,9 +18,14 @@ export async function suggestScore(
   referenceAnswer: string,
   candidateAnswer: string
 ): Promise<ScoreSuggestionResult> {
-  const model = getGeminiClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const openai = getOpenAIClient();
 
-  const prompt = `You are an expert exam evaluator. Score the candidate's answer on a scale of 0 to 10.
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'user',
+        content: `You are an expert exam evaluator. Score the candidate's answer on a scale of 0 to 10.
 
 QUESTION:
 ${question}
@@ -41,17 +37,13 @@ CANDIDATE'S ANSWER:
 ${candidateAnswer}
 
 Evaluate how well the candidate's answer matches the reference answer in terms of accuracy, completeness, and understanding.
+Respond with a JSON object: {"score": <integer 0-10>, "reasoning": "<one or two sentences explaining the score>"}`,
+      },
+    ],
+    response_format: { type: 'json_object' },
+  });
 
-Respond ONLY with valid JSON in this exact format:
-{"score": <integer 0-10>, "reasoning": "<one or two sentences explaining the score>"}
-
-Do not include anything outside the JSON object.`;
-
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
-  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-
-  const parsed = JSON.parse(cleaned) as { score: number; reasoning: string };
+  const parsed = JSON.parse(response.choices[0].message.content || '{}') as { score: number; reasoning: string };
   const score = Math.max(0, Math.min(10, Math.round(Number(parsed.score))));
   return { score, reasoning: String(parsed.reasoning) };
 }

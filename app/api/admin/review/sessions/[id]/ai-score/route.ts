@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     ({ score, reasoning } = await suggestScore(questionText, referenceAnswer, candidateAnswer));
   } catch (e) {
     const message = e instanceof Error ? e.message : 'AI scoring failed';
-    return apiError(message.includes('GEMINI_API_KEY') ? 'AI scoring is not configured (missing GEMINI_API_KEY)' : message, 502);
+    return apiError(message.includes('OPENAI_API_KEY') ? 'AI scoring is not configured (missing OPENAI_API_KEY)' : message, 502);
   }
 
   // Persist the AI suggestion
