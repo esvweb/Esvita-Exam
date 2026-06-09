@@ -88,7 +88,7 @@ export default function Sidebar({ role, userName, userEmail }: Props) {
           </div>
           <div>
             <p className="font-bold text-slate-800 text-sm leading-tight">Esvita</p>
-            <p className="text-xs text-slate-400 leading-tight">Exam System</p>
+            <p className="text-xs text-slate-400 leading-tight">Academy</p>
           </div>
         </div>
       </div>

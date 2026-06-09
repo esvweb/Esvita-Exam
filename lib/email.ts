@@ -18,7 +18,7 @@ function getTransporter() {
   return transporter;
 }
 
-const FROM = process.env.SMTP_FROM || 'Esvita Exam System <no-reply@esvitaclinic.com>';
+const FROM = process.env.SMTP_FROM || 'Esvita Academy <no-reply@esvitaclinic.com>';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 // ── Logged send helper ────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export async function sendAdminOTP(email: string, name: string, otp: string) {
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
-      <div class="h"><h1>Esvita Exam System</h1><p>Admin Login Verification</p></div>
+      <div class="h"><h1>Esvita Academy</h1><p>Admin Login Verification</p></div>
       <div class="b">
         <p>Hello <strong>${name}</strong>,</p>
         <p>Your one-time login code is:</p>
@@ -93,7 +93,7 @@ export async function sendAdminOTP(email: string, name: string, otp: string) {
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] Your Login Code: ${otp}`, html, { type: 'otp' });
+  await send(email, `[Esvita Academy] Your Login Code: ${otp}`, html, { type: 'otp' });
 }
 
 // ─── Send Exam Invitation ─────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ export async function sendExamInvitation(
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
-      <div class="h"><h1>Esvita Exam System</h1></div>
+      <div class="h"><h1>Esvita Academy</h1></div>
       <div class="b">
         <p>Dear <strong>${name}</strong>,</p>
         <p>You have been invited to participate in the following assessment:</p>
@@ -145,7 +145,7 @@ export async function sendExamInvitation(
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] Invitation: ${examTitle}`, html, {
+  await send(email, `[Esvita Academy] Invitation: ${examTitle}`, html, {
     type: 'invitation',
     audienceId: meta?.audienceId,
     examId: meta?.examId,
@@ -182,7 +182,7 @@ export async function sendExamAssignment(
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
-      <div class="h"><h1>Esvita Exam System</h1><p style="color:rgba(255,255,255,.85);margin:8px 0 0">New Exam Assigned</p></div>
+      <div class="h"><h1>Esvita Academy</h1><p style="color:rgba(255,255,255,.85);margin:8px 0 0">New Exam Assigned</p></div>
       <div class="b">
         <p>Dear <strong>${nickname}</strong>,</p>
         <p>A new exam has been assigned to you:</p>
@@ -197,7 +197,7 @@ export async function sendExamAssignment(
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] New Exam Assigned: ${examTitle}`, html, {
+  await send(email, `[Esvita Academy] New Exam Assigned: ${examTitle}`, html, {
     type: 'assignment',
     audienceId: meta?.audienceId,
     examId: meta?.examId,
@@ -248,7 +248,7 @@ export async function sendSupervisorReminder(
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] Review Deadline Tomorrow: ${examTitle}`, html, {
+  await send(email, `[Esvita Academy] Review Deadline Tomorrow: ${examTitle}`, html, {
     type: 'supervisor_reminder',
     examId: meta?.examId,
   });
@@ -297,7 +297,7 @@ export async function sendCandidateDeadlineReminder(
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] Reminder: ${examTitle} closes in 24 hours`, html, {
+  await send(email, `[Esvita Academy] Reminder: ${examTitle} closes in 24 hours`, html, {
     type: 'reminder',
     audienceId: meta?.audienceId,
     examId: meta?.examId,
@@ -333,7 +333,7 @@ export async function sendCompletionConfirmation(
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
-      <div class="h"><h1>Esvita Exam System</h1><p style="color:rgba(255,255,255,.9);margin:8px 0 0">Exam Completed Successfully</p></div>
+      <div class="h"><h1>Esvita Academy</h1><p style="color:rgba(255,255,255,.9);margin:8px 0 0">Exam Completed Successfully</p></div>
       <div class="b">
         <div style="font-size:64px;text-align:center;margin:16px 0">✅</div>
         <p>Dear <strong>${nickname}</strong>,</p>
@@ -352,7 +352,7 @@ export async function sendCompletionConfirmation(
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] Completed: ${examTitle} — Results pending`, html, {
+  await send(email, `[Esvita Academy] Completed: ${examTitle} — Results pending`, html, {
     type: 'completion',
     audienceId: meta?.audienceId,
     examId: meta?.examId,
@@ -415,7 +415,7 @@ export async function sendExamResult(data: ExamResultData) {
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
-      <div class="h"><h1>Esvita Exam System</h1><p style="color:rgba(255,255,255,.85);margin:8px 0 0">Exam Results</p></div>
+      <div class="h"><h1>Esvita Academy</h1><p style="color:rgba(255,255,255,.85);margin:8px 0 0">Exam Results</p></div>
       <div class="b">
         <p>Dear <strong>${data.candidateNickname}</strong>,</p>
         <p>You have completed: <strong>${data.examTitle}</strong></p>
@@ -439,7 +439,7 @@ export async function sendExamResult(data: ExamResultData) {
 
   await send(
     data.candidateEmail,
-    `[Esvita Exam] Your Results: ${data.examTitle} — ${data.score}%`,
+    `[Esvita Academy] Your Results: ${data.examTitle} — ${data.score}%`,
     html,
     { type: 'result', audienceId: data.audienceId, examId: data.examId, sessionId: data.sessionId }
   );
@@ -461,7 +461,7 @@ export async function sendCandidateOTP(email: string, name: string, otp: string)
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
-      <div class="h"><h1>Esvita Exam System</h1><p style="color:rgba(255,255,255,.9);margin:8px 0 0">Result Portal Access</p></div>
+      <div class="h"><h1>Esvita Academy</h1><p style="color:rgba(255,255,255,.9);margin:8px 0 0">Result Portal Access</p></div>
       <div class="b">
         <p>Hello <strong>${name}</strong>,</p>
         <p>Your one-time code to access the exam results portal:</p>
@@ -471,5 +471,5 @@ export async function sendCandidateOTP(email: string, name: string, otp: string)
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
 
-  await send(email, `[Esvita Exam] Your results portal code: ${otp}`, html, { type: 'otp' });
+  await send(email, `[Esvita Academy] Your results portal code: ${otp}`, html, { type: 'otp' });
 }

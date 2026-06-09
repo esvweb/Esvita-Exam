@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Esvita Exam System',
+  title: 'Esvita Academy',
   description: 'Multilingual Medical Advisor Assessment Platform',
   icons: {
     icon: '/favicon.ico',

@@ -113,7 +113,7 @@ const emptyQuestionForm = () => ({
   saveToBank: false,
 });
 
-const SAMPLE_MD = `# Esvita Exam - Sample Import File
+const SAMPLE_MD = `# Esvita Academy - Sample Import File
 # Format: Q: / A: / B: / C: / D: / ANSWER: / EXPLANATION:
 # Supported files: .txt and .md
 # Separate each question block with a blank line.

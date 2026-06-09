@@ -1,4 +1,4 @@
-# Esvita Exam System
+# Esvita Academy
 
 Multilingual, OTP-authenticated Exam & Assessment Platform for Esvita Clinic Medical Advisors.
 
@@ -22,7 +22,7 @@ SMTP_PORT="587"
 SMTP_SECURE="false"
 SMTP_USER="your@gmail.com"
 SMTP_PASS="your-app-password"
-SMTP_FROM="Esvita Exam <no-reply@esvitaclinic.com>"
+SMTP_FROM="Esvita Academy <no-reply@esvitaclinic.com>"
 ```
 
 ### 3. Set up database

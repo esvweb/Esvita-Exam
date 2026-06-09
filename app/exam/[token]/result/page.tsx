@@ -82,7 +82,7 @@ export default function ExamResultPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 bg-white/10 rounded-xl mb-3 border border-white/20">
               <GraduationCap size={24} className="text-white" />
             </div>
-            <h1 className="text-lg font-bold text-white">Esvita Exam System</h1>
+            <h1 className="text-lg font-bold text-white">Esvita Academy</h1>
           </div>
 
           <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
@@ -158,7 +158,7 @@ export default function ExamResultPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 bg-white/10 rounded-xl mb-3 border border-white/20">
             <GraduationCap size={24} className="text-white" />
           </div>
-          <h1 className="text-lg font-bold text-white">Esvita Exam System</h1>
+          <h1 className="text-lg font-bold text-white">Esvita Academy</h1>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'My Results — Esvita Exam',
+  title: 'My Results — Esvita Academy',
   description: 'View your exam results',
 };
 
@@ -16,7 +16,7 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
           </svg>
         </div>
         <div>
-          <p className="font-bold text-slate-800 text-sm leading-none">Esvita Exam</p>
+          <p className="font-bold text-slate-800 text-sm leading-none">Esvita Academy</p>
           <p className="text-xs text-slate-400 mt-0.5">Candidate Portal</p>
         </div>
       </header>
