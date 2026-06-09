@@ -1,28 +1,21 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
-function getClient() {
+// ── Clients ───────────────────────────────────────────────────────────────────
+
+function getGeminiClient() {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not set');
   return new GoogleGenerativeAI(key);
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const errStr = String(e instanceof Error ? e.message : e);
-      const isRateLimit = errStr.includes('429') || errStr.includes('quota') || errStr.includes('Too Many Requests');
-      if (attempt === maxAttempts - 1 || !isRateLimit) throw e;
-      await sleep((attempt + 1) * 60_000); // 60s, 120s
-    }
-  }
-  throw new Error('Max retries exceeded');
+function getOpenAIClient() {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('OPENAI_API_KEY is not set');
+  return new OpenAI({ apiKey: key });
 }
 
-// ── AI Score Suggestion ───────────────────────────────────────────────────────
+// ── AI Score Suggestion (Gemini) ──────────────────────────────────────────────
 
 export interface ScoreSuggestionResult {
   score: number;  // 0–10
@@ -34,7 +27,7 @@ export async function suggestScore(
   referenceAnswer: string,
   candidateAnswer: string
 ): Promise<ScoreSuggestionResult> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = getGeminiClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const prompt = `You are an expert exam evaluator. Score the candidate's answer on a scale of 0 to 10.
 
@@ -54,10 +47,8 @@ Respond ONLY with valid JSON in this exact format:
 
 Do not include anything outside the JSON object.`;
 
-  const result = await withRetry(() => model.generateContent(prompt));
+  const result = await model.generateContent(prompt);
   const text = result.response.text().trim();
-
-  // Strip markdown code fences if present
   const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 
   const parsed = JSON.parse(cleaned) as { score: number; reasoning: string };
@@ -65,13 +56,13 @@ Do not include anything outside the JSON object.`;
   return { score, reasoning: String(parsed.reasoning) };
 }
 
-// ── AI Translation ────────────────────────────────────────────────────────────
+// ── AI Translation (OpenAI gpt-4o-mini) ──────────────────────────────────────
 
 export type SupportedLanguage = 'FRA' | 'RU' | 'TR' | 'ITA';
 
 export interface TranslationInput {
   question: string;
-  options?: string[];  // for multiple_choice
+  options?: string[];
   referenceAnswer?: string;
   explanation?: string;
 }
@@ -94,21 +85,15 @@ export async function translateQuestion(
   input: TranslationInput,
   targetLanguage: SupportedLanguage
 ): Promise<TranslationOutput> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const openai = getOpenAIClient();
   const langName = LANG_NAMES[targetLanguage];
 
   const optionsSection = input.options?.length
-    ? `OPTIONS (translate each, preserving A/B/C/D letter prefixes if present):
-${input.options.map((o, i) => `${i + 1}. ${o}`).join('\n')}`
+    ? `OPTIONS (translate each, preserving order):\n${input.options.map((o, i) => `${i + 1}. ${o}`).join('\n')}`
     : '';
 
-  const refSection = input.referenceAnswer
-    ? `REFERENCE ANSWER:\n${input.referenceAnswer}`
-    : '';
-
-  const expSection = input.explanation
-    ? `EXPLANATION:\n${input.explanation}`
-    : '';
+  const refSection = input.referenceAnswer ? `REFERENCE ANSWER:\n${input.referenceAnswer}` : '';
+  const expSection = input.explanation ? `EXPLANATION:\n${input.explanation}` : '';
 
   const prompt = `Translate the following exam question content from English to ${langName}.
 Preserve medical/technical terminology accurately. Keep the tone professional.
@@ -119,27 +104,19 @@ ${optionsSection}
 ${refSection}
 ${expSection}
 
-Respond ONLY with valid JSON in this exact format (include only fields that were provided):
-{
-  "question": "<translated question>",
-  ${input.options?.length ? '"options": ["<opt1>", "<opt2>", ...],' : ''}
-  ${input.referenceAnswer ? '"referenceAnswer": "<translated reference answer>",' : ''}
-  ${input.explanation ? '"explanation": "<translated explanation>",' : ''}
-  "_dummy": null
-}
+Respond with a JSON object containing only the fields that were provided:
+- "question": translated question text
+${input.options?.length ? '- "options": array of translated option strings (same count and order)\n' : ''}${input.referenceAnswer ? '- "referenceAnswer": translated reference answer\n' : ''}${input.explanation ? '- "explanation": translated explanation\n' : ''}`;
 
-Do not include anything outside the JSON object.`;
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+  });
 
-  const result = await withRetry(() => model.generateContent(prompt));
-  const text = result.response.text().trim();
-  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-
-  const parsed = JSON.parse(cleaned) as TranslationOutput & { _dummy?: null };
-  delete (parsed as { _dummy?: null })._dummy;
+  const parsed = JSON.parse(response.choices[0].message.content || '{}') as TranslationOutput;
   return parsed;
 }
-
-// ── Batch translate one question into multiple languages ──────────────────────
 
 export async function batchTranslate(
   input: TranslationInput,
@@ -156,7 +133,7 @@ export async function batchTranslate(
   return results;
 }
 
-// ── Exam metadata translation (title + description) ──────────────────────────
+// ── Exam metadata translation ─────────────────────────────────────────────────
 
 export interface ExamMetaInput {
   title: string;
@@ -172,34 +149,27 @@ export async function translateExamMeta(
   input: ExamMetaInput,
   targetLanguage: SupportedLanguage
 ): Promise<ExamMetaOutput> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const openai = getOpenAIClient();
   const langName = LANG_NAMES[targetLanguage];
 
-  const descSection = input.description ? `DESCRIPTION:\n${input.description}` : '';
-
-  const prompt = `Translate the following exam title and description from English to ${langName}.
+  const prompt = `Translate the following exam title${input.description ? ' and description' : ''} from English to ${langName}.
 Preserve medical/technical terminology accurately. Keep the tone professional.
 
 TITLE:
 ${input.title}
-${descSection}
+${input.description ? `\nDESCRIPTION:\n${input.description}` : ''}
 
-Respond ONLY with valid JSON in this exact format (include only fields that were provided):
-{
-  "title": "<translated title>",
-  ${input.description ? '"description": "<translated description>",' : ''}
-  "_dummy": null
-}
+Respond with a JSON object with:
+- "title": translated title
+${input.description ? '- "description": translated description' : ''}`;
 
-Do not include anything outside the JSON object.`;
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+  });
 
-  const result = await withRetry(() => model.generateContent(prompt));
-  const text = result.response.text().trim();
-  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-
-  const parsed = JSON.parse(cleaned) as ExamMetaOutput & { _dummy?: null };
-  delete (parsed as { _dummy?: null })._dummy;
-  return parsed;
+  return JSON.parse(response.choices[0].message.content || '{}') as ExamMetaOutput;
 }
 
 export async function batchTranslateExamMeta(
