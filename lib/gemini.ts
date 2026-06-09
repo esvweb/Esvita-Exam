@@ -15,7 +15,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
     } catch (e) {
       const isRateLimit = e instanceof Error && (e.message.includes('429') || e.message.includes('quota'));
       if (attempt === maxAttempts - 1 || !isRateLimit) throw e;
-      await sleep((attempt + 1) * 10_000); // 10s, 20s
+      await sleep((attempt + 1) * 60_000); // 60s, 120s
     }
   }
   throw new Error('Max retries exceeded');
@@ -33,7 +33,7 @@ export async function suggestScore(
   referenceAnswer: string,
   candidateAnswer: string
 ): Promise<ScoreSuggestionResult> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const prompt = `You are an expert exam evaluator. Score the candidate's answer on a scale of 0 to 10.
 
@@ -93,7 +93,7 @@ export async function translateQuestion(
   input: TranslationInput,
   targetLanguage: SupportedLanguage
 ): Promise<TranslationOutput> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
   const langName = LANG_NAMES[targetLanguage];
 
   const optionsSection = input.options?.length
@@ -171,7 +171,7 @@ export async function translateExamMeta(
   input: ExamMetaInput,
   targetLanguage: SupportedLanguage
 ): Promise<ExamMetaOutput> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
   const langName = LANG_NAMES[targetLanguage];
 
   const descSection = input.description ? `DESCRIPTION:\n${input.description}` : '';

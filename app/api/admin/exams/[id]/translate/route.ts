@@ -54,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const questionUpdates: { id: string; data: Record<string, string> }[] = [];
     for (const q of exam.questions) {
       if (!q.questionEn) continue;
-      await sleep(2000); // stay within free-tier rate limits (10 RPM)
+      await sleep(4000); // stay within free-tier rate limits (15 RPM for gemini-2.0-flash)
       const options = q.optionsEn ? JSON.parse(q.optionsEn) as string[] : undefined;
       const results = await batchTranslate(
         {
