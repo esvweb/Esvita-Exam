@@ -13,9 +13,7 @@ interface ReviewSession {
   id: string;
   examId: string;
   examTitle: string;
-  candidateName: string;
-  candidateEmail: string;
-  nickname: string | null;
+  candidateNickname: string;
   selectedLanguage: string;
   completedAt: string | null;
   status: string;
@@ -40,7 +38,7 @@ export default function ReviewPage() {
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
   const pendingCount = sessions.filter((s) => s.status === 'pending_review').length;
-  const reviewedCount = sessions.filter((s) => s.status === 'reviewed').length;
+  const reviewedCount = sessions.filter((s) => s.status === 'completed').length;
 
   return (
     <div className="flex flex-col h-full">
@@ -168,10 +166,7 @@ export default function ReviewPage() {
                                     {LANGUAGE_FLAGS[s.selectedLanguage as Language] || '🌐'} {s.selectedLanguage}
                                   </span>
                                 </div>
-                                <p className="text-sm text-slate-800">
-                                  {s.nickname ? `${s.candidateName} (${s.nickname})` : s.candidateName}
-                                </p>
-                                <p className="text-xs text-slate-400">{s.candidateEmail}</p>
+                                <p className="text-sm text-slate-800">{s.candidateNickname}</p>
                               </div>
 
                               <div className="flex items-center gap-6 flex-shrink-0">

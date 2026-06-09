@@ -23,10 +23,15 @@ export async function GET(req: NextRequest) {
   }
   if (examIdFilter) examWhere.id = examIdFilter;
 
+  const dbStatus =
+    statusFilter === 'all' ? { in: ['pending_review', 'completed'] } :
+    statusFilter === 'reviewed' ? 'completed' :
+    statusFilter; // 'pending_review'
+
   const sessions = await prisma.examSession.findMany({
     where: {
       isPreview: false,
-      status: statusFilter === 'all' ? { in: ['pending_review', 'completed'] } : statusFilter,
+      status: dbStatus,
       exam: examWhere,
     },
     include: {
