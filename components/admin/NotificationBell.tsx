@@ -29,11 +29,15 @@ export default function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
-    const res = await fetch('/api/admin/notifications');
-    if (res.ok) {
-      const d = await res.json();
-      setNotifications(d.notifications || []);
-      setUnread(d.unreadCount || 0);
+    try {
+      const res = await fetch('/api/admin/notifications');
+      if (res.ok) {
+        const d = await res.json();
+        setNotifications(d.notifications || []);
+        setUnread(d.unreadCount || 0);
+      }
+    } catch {
+      // Silently ignore — transient network issues shouldn't crash the page
     }
   }, []);
 
@@ -54,25 +58,29 @@ export default function NotificationBell() {
   }, [open]);
 
   const markAllRead = async () => {
-    await fetch('/api/admin/notifications', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ all: true }),
-    });
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnread(0);
+    try {
+      await fetch('/api/admin/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnread(0);
+    } catch { /* ignore */ }
   };
 
   const markRead = async (id: string) => {
-    await fetch('/api/admin/notifications', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
-    setUnread((u) => Math.max(0, u - 1));
+    try {
+      await fetch('/api/admin/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      setUnread((u) => Math.max(0, u - 1));
+    } catch { /* ignore */ }
   };
 
   return (

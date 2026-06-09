@@ -5,6 +5,8 @@ import { apiError, apiSuccess } from '@/lib/utils';
 import { canEditDraftExam, canEditLiveExam, forbidden } from '@/lib/permissions';
 import { batchTranslate, batchTranslateExamMeta, type SupportedLanguage } from '@/lib/gemini';
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const LANG_SUFFIX: Record<SupportedLanguage, string> = { FRA: 'Fra', RU: 'Ru', TR: 'Tr', ITA: 'Ita' };
 const VALID_LANGS: SupportedLanguage[] = ['FRA', 'RU', 'TR', 'ITA'];
 
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const questionUpdates: { id: string; data: Record<string, string> }[] = [];
     for (const q of exam.questions) {
       if (!q.questionEn) continue;
+      await sleep(2000); // stay within free-tier rate limits (10 RPM)
       const options = q.optionsEn ? JSON.parse(q.optionsEn) as string[] : undefined;
       const results = await batchTranslate(
         {

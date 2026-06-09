@@ -6,6 +6,21 @@ function getClient() {
   return new GoogleGenerativeAI(key);
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const isRateLimit = e instanceof Error && (e.message.includes('429') || e.message.includes('quota'));
+      if (attempt === maxAttempts - 1 || !isRateLimit) throw e;
+      await sleep((attempt + 1) * 10_000); // 10s, 20s
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
 // ── AI Score Suggestion ───────────────────────────────────────────────────────
 
 export interface ScoreSuggestionResult {
@@ -38,7 +53,7 @@ Respond ONLY with valid JSON in this exact format:
 
 Do not include anything outside the JSON object.`;
 
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt));
   const text = result.response.text().trim();
 
   // Strip markdown code fences if present
@@ -114,7 +129,7 @@ Respond ONLY with valid JSON in this exact format (include only fields that were
 
 Do not include anything outside the JSON object.`;
 
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt));
   const text = result.response.text().trim();
   const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 
@@ -177,7 +192,7 @@ Respond ONLY with valid JSON in this exact format (include only fields that were
 
 Do not include anything outside the JSON object.`;
 
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt));
   const text = result.response.text().trim();
   const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 

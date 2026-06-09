@@ -26,15 +26,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const options = item.optionsEn ? JSON.parse(item.optionsEn) as string[] : undefined;
 
-  const results = await batchTranslate(
-    {
-      question: item.questionEn,
-      options,
-      referenceAnswer: item.referenceAnswerEn || undefined,
-      explanation: item.explanationEn || undefined,
-    },
-    toTranslate
-  );
+  let results;
+  try {
+    results = await batchTranslate(
+      {
+        question: item.questionEn,
+        options,
+        referenceAnswer: item.referenceAnswerEn || undefined,
+        explanation: item.explanationEn || undefined,
+      },
+      toTranslate
+    );
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Translation failed';
+    return apiError(message.includes('GEMINI_API_KEY') ? 'AI translation is not configured (missing GEMINI_API_KEY)' : message, 502);
+  }
 
   // Build update payload from translations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

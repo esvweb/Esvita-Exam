@@ -39,7 +39,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return apiError('Candidate did not provide an answer');
   }
 
-  const { score, reasoning } = await suggestScore(questionText, referenceAnswer, candidateAnswer);
+  let score: number, reasoning: string;
+  try {
+    ({ score, reasoning } = await suggestScore(questionText, referenceAnswer, candidateAnswer));
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'AI scoring failed';
+    return apiError(message.includes('GEMINI_API_KEY') ? 'AI scoring is not configured (missing GEMINI_API_KEY)' : message, 502);
+  }
 
   // Persist the AI suggestion
   await prisma.examAnswer.update({
