@@ -13,7 +13,8 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
     try {
       return await fn();
     } catch (e) {
-      const isRateLimit = e instanceof Error && (e.message.includes('429') || e.message.includes('quota'));
+      const errStr = String(e instanceof Error ? e.message : e);
+      const isRateLimit = errStr.includes('429') || errStr.includes('quota') || errStr.includes('Too Many Requests');
       if (attempt === maxAttempts - 1 || !isRateLimit) throw e;
       await sleep((attempt + 1) * 60_000); // 60s, 120s
     }
