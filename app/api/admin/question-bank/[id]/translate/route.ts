@@ -24,14 +24,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const toTranslate = languages.filter((l) => validLangs.includes(l));
   if (!toTranslate.length) return apiError('No valid languages specified');
 
-  const options = item.optionsEn ? JSON.parse(item.optionsEn) as string[] : undefined;
+  // Options are stored as [{key, value}] — extract just text values for AI
+  const rawOptions: { key: string; value: string }[] | undefined = item.optionsEn
+    ? JSON.parse(item.optionsEn)
+    : undefined;
+  const optionStrings = rawOptions?.map((o) => o.value);
 
   let results;
   try {
     results = await batchTranslate(
       {
         question: item.questionEn,
-        options,
+        options: optionStrings,
         referenceAnswer: item.referenceAnswerEn || undefined,
         explanation: item.explanationEn || undefined,
       },
@@ -48,7 +52,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   for (const [lang, t] of Object.entries(results)) {
     const suffix = lang === 'FRA' ? 'Fra' : lang === 'RU' ? 'Ru' : lang === 'TR' ? 'Tr' : 'Ita';
     if (t.question) update[`question${suffix}`] = t.question;
-    if (t.options) update[`options${suffix}`] = JSON.stringify(t.options);
+    if (t.options && rawOptions) {
+      // Rebuild [{key, value}] using original keys + translated values
+      update[`options${suffix}`] = JSON.stringify(
+        t.options.map((val, i) => ({ key: rawOptions[i]?.key ?? String.fromCharCode(65 + i), value: val }))
+      );
+    }
     if (t.referenceAnswer) update[`referenceAnswer${suffix}`] = t.referenceAnswer;
     if (t.explanation) update[`explanation${suffix}`] = t.explanation;
   }

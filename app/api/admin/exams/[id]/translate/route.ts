@@ -52,11 +52,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const questionUpdates: { id: string; data: Record<string, string> }[] = [];
     for (const q of exam.questions) {
       if (!q.questionEn) continue;
-      const options = q.optionsEn ? JSON.parse(q.optionsEn) as string[] : undefined;
+      // Options are stored as [{key, value}] — extract just the text values for AI
+      const rawOptions: { key: string; value: string }[] | undefined = q.optionsEn
+        ? JSON.parse(q.optionsEn)
+        : undefined;
+      const optionStrings = rawOptions?.map((o) => o.value);
+
       const results = await batchTranslate(
         {
           question: q.questionEn,
-          options,
+          options: optionStrings,
           referenceAnswer: q.referenceAnswerEn || undefined,
           explanation: q.explanationEn || undefined,
         },
@@ -67,7 +72,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       for (const [lang, t] of Object.entries(results)) {
         const suffix = LANG_SUFFIX[lang as SupportedLanguage];
         if (t.question) data[`question${suffix}`] = t.question;
-        if (t.options) data[`options${suffix}`] = JSON.stringify(t.options);
+        if (t.options && rawOptions) {
+          // Rebuild [{key, value}] using original keys + translated values
+          data[`options${suffix}`] = JSON.stringify(
+            t.options.map((val, i) => ({ key: rawOptions[i]?.key ?? String.fromCharCode(65 + i), value: val }))
+          );
+        }
         if (t.referenceAnswer) data[`referenceAnswer${suffix}`] = t.referenceAnswer;
         if (t.explanation) data[`explanation${suffix}`] = t.explanation;
       }
