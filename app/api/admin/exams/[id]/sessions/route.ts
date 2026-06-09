@@ -28,17 +28,18 @@ export async function GET(
   if (!exam) return apiError('Exam not found', 404);
 
   const sessions = await prisma.examSession.findMany({
-    where: { examId, status: 'completed' },
+    where: { examId, status: { in: ['completed', 'pending_review'] }, isPreview: false },
     include: {
       audience: { select: { id: true, name: true, email: true, nickname: true, realName: true } },
       answers: {
         include: {
           question: {
             select: {
-              id: true,
+              id: true, type: true,
               questionEn: true, questionTr: true, questionFra: true, questionRu: true, questionIta: true,
               correctAnswer: true,
               explanationEn: true,
+              maxScore: true,
             },
           },
         },
@@ -70,14 +71,24 @@ export async function GET(
         q.questionEn ||
         `Question ${idx + 1}`;
 
+      const isSA = q.type === 'short_answer';
+      const saStatus: 'pending' | 'reviewed' =
+        isSA ? (answer?.reviewedAt ? 'reviewed' : 'pending') : 'pending';
+
       return {
         index: idx + 1,
         questionId: qId,
         questionText: qText,
-        selectedAnswer: answer?.selectedAnswer ?? null,  // null = skipped
-        correctAnswer: q.correctAnswer,
-        isCorrect: answer?.isCorrect ?? false,
-        status: !answer ? 'skipped' : answer.isCorrect ? 'correct' : 'wrong',
+        type: q.type,
+        selectedAnswer: answer?.selectedAnswer ?? null,
+        correctAnswer: isSA ? null : q.correctAnswer,
+        isCorrect: isSA ? null : (answer?.isCorrect ?? false),
+        status: isSA
+          ? (saStatus === 'reviewed' ? 'sa_reviewed' : 'sa_pending')
+          : (!answer ? 'skipped' : answer.isCorrect ? 'correct' : 'wrong'),
+        // SA-specific
+        manualScore: isSA ? (answer?.manualScore ?? null) : null,
+        maxScore: isSA ? q.maxScore : null,
       };
     }).filter(Boolean);
 
@@ -87,6 +98,7 @@ export async function GET(
       candidateEmail,
       nickname,
       selectedLanguage: s.selectedLanguage,
+      status: s.status,
       score: s.score,
       correctCount: s.correctCount,
       wrongCount: s.wrongCount,

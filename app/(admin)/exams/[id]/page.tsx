@@ -76,10 +76,13 @@ interface SessionAnswer {
   index: number;
   questionId: string;
   questionText: string;
+  type: 'multiple_choice' | 'short_answer';
   selectedAnswer: string | null;
-  correctAnswer: string;
-  isCorrect: boolean;
-  status: 'correct' | 'wrong' | 'skipped';
+  correctAnswer: string | null;
+  isCorrect: boolean | null;
+  status: 'correct' | 'wrong' | 'skipped' | 'sa_reviewed' | 'sa_pending';
+  manualScore: number | null;
+  maxScore: number | null;
 }
 
 interface ExamSession {
@@ -88,6 +91,7 @@ interface ExamSession {
   candidateEmail: string;
   nickname: string | null;
   selectedLanguage: string;
+  status: string;
   score: number;
   correctCount: number;
   wrongCount: number;
@@ -738,37 +742,63 @@ export default function ExamDetailPage() {
                         <div className="border-t border-slate-100 p-4">
                           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Question Breakdown</p>
                           <div className="space-y-2">
-                            {s.questions.map((q) => (
-                              <div key={q.questionId} className={`flex items-start gap-3 p-2.5 rounded-lg text-sm ${
-                                q.status === 'correct' ? 'bg-emerald-50' :
-                                q.status === 'wrong' ? 'bg-red-50' : 'bg-slate-50'
-                              }`}>
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                  q.status === 'correct' ? 'bg-emerald-500' :
-                                  q.status === 'wrong' ? 'bg-red-400' : 'bg-slate-300'
-                                }`}>
-                                  {q.status === 'correct' ? <CheckCircle2 size={12} className="text-white" /> :
-                                   q.status === 'wrong' ? <XCircle size={12} className="text-white" /> :
-                                   <Minus size={12} className="text-white" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-slate-700 text-xs leading-snug line-clamp-2">{q.questionText || `Question ${q.index}`}</p>
-                                  <div className="flex items-center gap-3 mt-1 text-[11px]">
-                                    <span className={`font-medium ${
-                                      q.status === 'correct' ? 'text-emerald-700' :
-                                      q.status === 'wrong' ? 'text-red-600' : 'text-slate-400'
-                                    }`}>
-                                      {q.status === 'skipped' ? 'Skipped' :
-                                       `Selected: ${q.selectedAnswer ?? '—'}`}
-                                    </span>
-                                    {q.status === 'wrong' && (
-                                      <span className="text-emerald-700">Correct: {q.correctAnswer}</span>
-                                    )}
+                            {s.questions.map((q) => {
+                              const isSA = q.type === 'short_answer';
+                              const rowBg = isSA
+                                ? (q.status === 'sa_reviewed' ? 'bg-blue-50' : 'bg-amber-50')
+                                : (q.status === 'correct' ? 'bg-emerald-50' : q.status === 'wrong' ? 'bg-red-50' : 'bg-slate-50');
+                              const dotBg = isSA
+                                ? (q.status === 'sa_reviewed' ? 'bg-blue-500' : 'bg-amber-400')
+                                : (q.status === 'correct' ? 'bg-emerald-500' : q.status === 'wrong' ? 'bg-red-400' : 'bg-slate-300');
+                              return (
+                                <div key={q.questionId} className={`flex items-start gap-3 p-2.5 rounded-lg text-sm ${rowBg}`}>
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${dotBg}`}>
+                                    {isSA
+                                      ? (q.status === 'sa_reviewed'
+                                          ? <CheckCircle2 size={12} className="text-white" />
+                                          : <Clock size={12} className="text-white" />)
+                                      : (q.status === 'correct'
+                                          ? <CheckCircle2 size={12} className="text-white" />
+                                          : q.status === 'wrong'
+                                          ? <XCircle size={12} className="text-white" />
+                                          : <Minus size={12} className="text-white" />)
+                                    }
                                   </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-slate-700 text-xs leading-snug line-clamp-2">{q.questionText || `Question ${q.index}`}</p>
+                                    <div className="flex items-center gap-3 mt-1 text-[11px]">
+                                      {isSA ? (
+                                        <>
+                                          <span className="text-slate-600 line-clamp-1">
+                                            {q.selectedAnswer ? `Answer: ${q.selectedAnswer}` : 'No answer'}
+                                          </span>
+                                          {q.status === 'sa_reviewed' && q.manualScore !== null ? (
+                                            <span className="text-blue-700 font-medium flex-shrink-0">
+                                              {q.manualScore}/{q.maxScore ?? 10} pts
+                                            </span>
+                                          ) : (
+                                            <span className="text-amber-600 flex-shrink-0">Pending review</span>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className={`font-medium ${
+                                            q.status === 'correct' ? 'text-emerald-700' :
+                                            q.status === 'wrong' ? 'text-red-600' : 'text-slate-400'
+                                          }`}>
+                                            {q.status === 'skipped' ? 'Skipped' : `Selected: ${q.selectedAnswer ?? '—'}`}
+                                          </span>
+                                          {q.status === 'wrong' && (
+                                            <span className="text-emerald-700">Correct: {q.correctAnswer}</span>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 flex-shrink-0">#{q.index}</span>
                                 </div>
-                                <span className="text-[10px] text-slate-400 flex-shrink-0">#{q.index}</span>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
