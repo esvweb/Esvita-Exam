@@ -142,8 +142,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const mcScore = mcQuestions.length > 0 ? (mcCorrect / mcQuestions.length) * 100 : 0;
 
   const saAnswers = updatedAnswers.filter((a) => a.question.type === 'short_answer');
+  // All submitted SA answers reviewed; unanswered/skipped SA questions count as 0 — no record to review
   const saAllReviewed =
-    saAnswers.length === saQuestions.length && saAnswers.every((a) => a.reviewedAt !== null);
+    saAnswers.length > 0 && saAnswers.every((a) => a.reviewedAt !== null);
 
   let finalScore = Math.round(mcScore);
 

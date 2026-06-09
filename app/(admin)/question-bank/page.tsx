@@ -74,6 +74,7 @@ export default function QuestionBankPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [translating, setTranslating] = useState<string | null>(null);
@@ -147,6 +148,12 @@ export default function QuestionBankPage() {
     setLoading(false);
   }, [search, typeFilter]);
 
+  // Unique categories across all loaded items for the filter row
+  const allCategories = Array.from(new Set(items.flatMap((i) => i.categories))).sort();
+  const displayItems = categoryFilter
+    ? items.filter((i) => i.categories.includes(categoryFilter))
+    : items;
+
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
   const handleDelete = async () => {
@@ -188,7 +195,7 @@ export default function QuestionBankPage() {
       <div className="p-6">
 
         {/* Filters */}
-        <div className="flex gap-3 mb-5 flex-wrap">
+        <div className="flex gap-3 mb-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -211,6 +218,35 @@ export default function QuestionBankPage() {
           </button>
         </div>
 
+        {/* Category filter chips */}
+        {allCategories.length > 0 && (
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <button
+              onClick={() => setCategoryFilter('')}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                !categoryFilter
+                  ? 'bg-slate-700 border-slate-700 text-white'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              All categories
+            </button>
+            {allCategories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(categoryFilter === cat ? '' : cat)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  categoryFilter === cat
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-16"><Spinner size="lg" /></div>
         ) : items.length === 0 ? (
@@ -221,10 +257,17 @@ export default function QuestionBankPage() {
               When adding questions to an exam, check &ldquo;Save a copy to Question Bank&rdquo; to build your library.
             </p>
           </div>
+        ) : displayItems.length === 0 ? (
+          <div className="card p-8 text-center">
+            <p className="text-slate-500 text-sm">No questions match the selected category.</p>
+          </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">{items.length} question{items.length !== 1 ? 's' : ''} in bank</p>
-            {items.map((item) => (
+            <p className="text-sm text-slate-500">
+              {displayItems.length} question{displayItems.length !== 1 ? 's' : ''}
+              {categoryFilter ? ` in "${categoryFilter}"` : ' in bank'}
+            </p>
+            {displayItems.map((item) => (
               <div key={item.id} className="card overflow-hidden">
                 <div
                   className="flex items-start gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors"

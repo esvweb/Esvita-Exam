@@ -134,7 +134,7 @@ export async function sendExamInvitation(
         <p>Dear <strong>${name}</strong>,</p>
         <p>You have been invited to participate in the following assessment:</p>
         <div class="exam"><div class="etitle">${examTitle}</div></div>
-        <div style="text-align:center"><a href="${examLink}" class="btn">Start My Exam</a></div>
+        <div style="text-align:center"><a href="${examLink}" class="btn" style="color:#ffffff;text-decoration:none">Start My Exam</a></div>
         <div class="otp">
           <p style="margin:0 0 8px;font-size:14px;color:#78716c">Your verification code:</p>
           <div class="code">${otp}</div>
@@ -187,7 +187,7 @@ export async function sendExamAssignment(
         <p>Dear <strong>${nickname}</strong>,</p>
         <p>A new exam has been assigned to you:</p>
         <div class="exam"><div class="etitle">${examTitle}</div></div>
-        <div style="text-align:center"><a href="${examLink}" class="btn">Take My Exam</a></div>
+        <div style="text-align:center"><a href="${examLink}" class="btn" style="color:#ffffff;text-decoration:none">Take My Exam</a></div>
         <div class="deadline">
           <div style="font-size:12px;color:#64748b;margin-bottom:6px">Complete by</div>
           <div style="font-size:16px;font-weight:700;color:#1e40af">${expiry} UTC</div>
@@ -243,7 +243,7 @@ export async function sendSupervisorReminder(
           <div style="font-size:16px;font-weight:700;color:#dc2626">${dateStr} UTC</div>
         </div>
         <p>Please complete your review before the deadline so results can be released on time.</p>
-        <div style="text-align:center"><a href="${reviewLink}" class="btn">Go to Review</a></div>
+        <div style="text-align:center"><a href="${reviewLink}" class="btn" style="color:#ffffff;text-decoration:none">Go to Review</a></div>
       </div>
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;
@@ -292,7 +292,7 @@ export async function sendCandidateDeadlineReminder(
           <div style="font-size:16px;font-weight:700;color:#ca8a04">${deadlineStr} UTC</div>
         </div>
         <p>Please start and complete your exam before the deadline.</p>
-        <div style="text-align:center"><a href="${examLink}" class="btn">Start Exam Now</a></div>
+        <div style="text-align:center"><a href="${examLink}" class="btn" style="color:#ffffff;text-decoration:none">Start Exam Now</a></div>
       </div>
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System</div>
     </div></body></html>`;

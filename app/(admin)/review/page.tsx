@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/admin/Header';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
-import { MessageSquareText, Clock, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
+import { MessageSquareText, Clock, CheckCircle2, ChevronRight, RefreshCw, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 import { formatDateTime, LANGUAGE_FLAGS } from '@/lib/utils';
 import type { Language } from '@/types';
@@ -113,85 +113,115 @@ export default function ReviewPage() {
               : 'Reviewed sessions will appear here after scoring.'}
           />
         ) : (
-          <div className="space-y-2">
-            {sessions.map((s) => {
-              const progress = s.shortAnswerTotal > 0
-                ? Math.round((s.shortAnswerReviewed / s.shortAnswerTotal) * 100)
-                : 0;
-              const isPending = s.status === 'pending_review';
+          <div className="space-y-6">
+            {(() => {
+              // Group sessions by exam
+              const groups = sessions.reduce<Record<string, { examId: string; examTitle: string; items: ReviewSession[] }>>((acc, s) => {
+                if (!acc[s.examId]) acc[s.examId] = { examId: s.examId, examTitle: s.examTitle, items: [] };
+                acc[s.examId].items.push(s);
+                return acc;
+              }, {});
 
-              return (
-                <Link
-                  key={s.id}
-                  href={`/review/${s.id}`}
-                  className="block bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all group"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          isPending
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {isPending ? <Clock size={9} /> : <CheckCircle2 size={9} />}
-                          {isPending ? 'Pending' : 'Reviewed'}
+              return Object.values(groups).map(({ examId, examTitle, items }) => {
+                const pendingInGroup = items.filter((s) => s.status === 'pending_review').length;
+                return (
+                  <div key={examId}>
+                    {/* Exam group header */}
+                    <div className="flex items-center gap-3 mb-2">
+                      <BookOpen size={15} className="text-slate-400 flex-shrink-0" />
+                      <h3 className="text-sm font-semibold text-slate-700 truncate">{examTitle}</h3>
+                      <span className="text-xs text-slate-400 flex-shrink-0">
+                        {items.length} candidate{items.length !== 1 ? 's' : ''}
+                      </span>
+                      {pendingInGroup > 0 && (
+                        <span className="ml-1 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+                          {pendingInGroup} pending
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          {LANGUAGE_FLAGS[s.selectedLanguage as Language] || '🌐'} {s.selectedLanguage}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-slate-800 text-sm truncate">{s.examTitle}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {s.nickname ? `${s.candidateName} (${s.nickname})` : s.candidateName}
-                        <span className="text-slate-300 mx-1.5">·</span>
-                        {s.candidateEmail}
-                      </p>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-6 flex-shrink-0">
-                      {/* SA progress */}
-                      <div className="text-right">
-                        <p className="text-xs text-slate-400 mb-1">Short answers</p>
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${isPending ? 'bg-amber-400' : 'bg-emerald-500'}`}
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-medium text-slate-600">
-                            {s.shortAnswerReviewed}/{s.shortAnswerTotal}
-                          </span>
-                        </div>
-                      </div>
+                    <div className="space-y-2 pl-2 border-l-2 border-slate-100">
+                      {items.map((s) => {
+                        const progress = s.shortAnswerTotal > 0
+                          ? Math.round((s.shortAnswerReviewed / s.shortAnswerTotal) * 100)
+                          : 0;
+                        const isPending = s.status === 'pending_review';
 
-                      {/* Score */}
-                      <div className="text-right w-16">
-                        <p className="text-xs text-slate-400">Score</p>
-                        <p className={`text-lg font-bold ${
-                          s.score === null ? 'text-slate-300' :
-                          s.score >= 70 ? 'text-emerald-600' :
-                          s.score >= 50 ? 'text-amber-600' : 'text-red-500'
-                        }`}>
-                          {s.score !== null ? `${s.score}%` : '—'}
-                        </p>
-                      </div>
+                        return (
+                          <Link
+                            key={s.id}
+                            href={`/review/${s.id}`}
+                            className="block bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all group"
+                          >
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                    isPending
+                                      ? 'bg-amber-100 text-amber-700'
+                                      : 'bg-emerald-100 text-emerald-700'
+                                  }`}>
+                                    {isPending ? <Clock size={9} /> : <CheckCircle2 size={9} />}
+                                    {isPending ? 'Pending' : 'Reviewed'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
+                                    {LANGUAGE_FLAGS[s.selectedLanguage as Language] || '🌐'} {s.selectedLanguage}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-800">
+                                  {s.nickname ? `${s.candidateName} (${s.nickname})` : s.candidateName}
+                                </p>
+                                <p className="text-xs text-slate-400">{s.candidateEmail}</p>
+                              </div>
 
-                      {/* Date */}
-                      <div className="text-right w-32 hidden lg:block">
-                        <p className="text-xs text-slate-400">Completed</p>
-                        <p className="text-xs text-slate-600">
-                          {s.completedAt ? formatDateTime(s.completedAt) : '—'}
-                        </p>
-                      </div>
+                              <div className="flex items-center gap-6 flex-shrink-0">
+                                {/* SA progress */}
+                                <div className="text-right">
+                                  <p className="text-xs text-slate-400 mb-1">Short answers</p>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${isPending ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                                        style={{ width: `${progress}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium text-slate-600">
+                                      {s.shortAnswerReviewed}/{s.shortAnswerTotal}
+                                    </span>
+                                  </div>
+                                </div>
 
-                      <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                                {/* Score */}
+                                <div className="text-right w-16">
+                                  <p className="text-xs text-slate-400">Score</p>
+                                  <p className={`text-lg font-bold ${
+                                    s.score === null ? 'text-slate-300' :
+                                    s.score >= 70 ? 'text-emerald-600' :
+                                    s.score >= 50 ? 'text-amber-600' : 'text-red-500'
+                                  }`}>
+                                    {s.score !== null ? `${s.score}%` : '—'}
+                                  </p>
+                                </div>
+
+                                {/* Date */}
+                                <div className="text-right w-32 hidden lg:block">
+                                  <p className="text-xs text-slate-400">Completed</p>
+                                  <p className="text-xs text-slate-600">
+                                    {s.completedAt ? formatDateTime(s.completedAt) : '—'}
+                                  </p>
+                                </div>
+
+                                <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                              </div>
+                            </div>
+                          </Link>
+                        );
+                      })}
                     </div>
                   </div>
-                </Link>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         )}
       </div>

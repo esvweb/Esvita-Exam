@@ -55,6 +55,7 @@ export default function ReviewSessionPage() {
   const [session, setSession] = useState<ReviewSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pushing, setPushing] = useState(false);
 
   // Local score/feedback state keyed by answerId
   const [scores, setScores] = useState<Record<string, { score: string; feedback: string }>>({});
@@ -175,6 +176,20 @@ export default function ReviewSessionPage() {
     setSaving(false);
   };
 
+  const handlePushResult = async () => {
+    if (!session) return;
+    setPushing(true);
+    const res = await fetch(`/api/admin/review/sessions/${sessionId}/push-result`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      success(`Result email sent to candidate.`);
+      fetchSession();
+    } else {
+      error(data.error || 'Failed to push result');
+    }
+    setPushing(false);
+  };
+
   if (loading || !session) {
     return (
       <div className="flex flex-col h-full">
@@ -278,6 +293,18 @@ export default function ReviewSessionPage() {
             </button>
             {!allScored && (
               <p className="text-xs text-center text-slate-400">Score all questions to save</p>
+            )}
+
+            {/* Push Result button — only visible when review is complete */}
+            {!isPending && (
+              <button
+                onClick={handlePushResult}
+                disabled={pushing}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {pushing ? <Spinner size="sm" className="text-emerald-600" /> : <Send size={14} />}
+                {pushing ? 'Sending…' : 'Push Result to Candidate'}
+              </button>
             )}
           </div>
 

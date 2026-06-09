@@ -307,6 +307,7 @@ model ExamSession {
   status           String    @default("in_progress")
 
   completionEmailSent Boolean @default(false)
+  resultEmailSent     Boolean @default(false)
 
   // Preview session — not saved to results, used only for admin exam preview
   isPreview Boolean @default(false)

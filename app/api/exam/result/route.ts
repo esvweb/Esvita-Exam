@@ -24,15 +24,15 @@ export async function GET(req: NextRequest) {
   });
 
   if (!session) return apiError('Session not found', 404);
-  if (session.status !== 'completed') return apiError('Exam not completed yet', 400);
+  if (session.status === 'in_progress' || session.status === 'abandoned') return apiError('Exam not completed yet', 400);
 
   const now = new Date();
   const validityStart = session.exam.validityStartedAt;
   const validityHours = session.exam.validityHours ?? 72;
   const resultsAvailableAt = validityStart ? addHours(validityStart, validityHours) : null;
 
-  // Pending = validity not yet expired AND results email not yet sent
-  const isPending = !session.exam.resultsEmailSentAt &&
+  // Pending = validity not yet expired AND neither the exam nor this session has had results released
+  const isPending = !session.exam.resultsEmailSentAt && !session.resultEmailSent &&
     (resultsAvailableAt ? now < resultsAvailableAt : true);
 
   const lang = session.selectedLanguage || 'EN';
