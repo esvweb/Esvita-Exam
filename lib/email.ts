@@ -373,6 +373,7 @@ export interface ExamResultData {
   skippedCount: number;
   passMarkPercent: number;
   language: string;
+  hasSAQuestions: boolean;
   wrongAnswers: Array<{
     questionText: string;
     selectedAnswer: string;
@@ -389,15 +390,30 @@ export async function sendExamResult(data: ExamResultData) {
   const scoreColor = data.score >= 80 ? '#16a34a' : data.score >= 60 ? '#ca8a04' : '#dc2626';
   const scoreLabel = data.score >= 80 ? 'Excellent' : data.score >= 60 ? 'Satisfactory' : 'Needs Improvement';
 
-  const wrongAnswersHtml = data.wrongAnswers.length === 0
-    ? '<p style="color:#16a34a;font-weight:600">Perfect score! All answers were correct.</p>'
-    : data.wrongAnswers.map((wa, i) => `
-        <div style="background:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:16px;margin-bottom:12px">
-          <p style="margin:0 0 8px;font-weight:600;color:#1e293b;font-size:14px">Q${i + 1}: ${wa.questionText}</p>
-          <p style="margin:0 0 4px;font-size:13px;color:#dc2626">Your answer: <strong>${wa.selectedAnswer || 'Not answered'}</strong></p>
-          <p style="margin:0 0 8px;font-size:13px;color:#16a34a">Correct answer: <strong>${wa.correctAnswer}</strong></p>
-          ${wa.explanation ? `<p style="margin:0;font-size:13px;color:#64748b;border-top:1px solid #fecaca;padding-top:8px"><strong>Explanation:</strong> ${wa.explanation}</p>` : ''}
-        </div>`).join('');
+  // Bottom section differs between MC and SA exams
+  const bottomSection = data.hasSAQuestions
+    ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:20px;margin:20px 0;text-align:center">
+        <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1e40af">Written Exam — Reviewed by Our Team</p>
+        <p style="margin:0;font-size:13px;color:#3b82f6">Your written answers were evaluated and scored by our supervisors.</p>
+       </div>`
+    : (() => {
+        const wrongAnswersHtml = data.wrongAnswers.map((wa, i) => `
+          <div style="background:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:16px;margin-bottom:12px">
+            <p style="margin:0 0 8px;font-weight:600;color:#1e293b;font-size:14px">Q${i + 1}: ${wa.questionText}</p>
+            <p style="margin:0 0 4px;font-size:13px;color:#dc2626">Your answer: <strong>${wa.selectedAnswer || 'Not answered'}</strong></p>
+            <p style="margin:0 0 8px;font-size:13px;color:#16a34a">Correct answer: <strong>${wa.correctAnswer}</strong></p>
+            ${wa.explanation ? `<p style="margin:0;font-size:13px;color:#64748b;border-top:1px solid #fecaca;padding-top:8px"><strong>Explanation:</strong> ${wa.explanation}</p>` : ''}
+          </div>`).join('');
+        const statsHtml = `
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0">
+            <div style="background:#f8fafc;border-radius:8px;padding:16px;text-align:center"><div style="font-size:28px;font-weight:800;color:#16a34a">${data.correctCount}</div><div style="font-size:12px;color:#94a3b8;margin-top:4px">Correct</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:16px;text-align:center"><div style="font-size:28px;font-weight:800;color:#dc2626">${data.wrongCount}</div><div style="font-size:12px;color:#94a3b8;margin-top:4px">Wrong</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:16px;text-align:center"><div style="font-size:28px;font-weight:800;color:#94a3b8">${data.skippedCount}</div><div style="font-size:12px;color:#94a3b8;margin-top:4px">Skipped</div></div>
+          </div>`;
+        return statsHtml + (data.wrongAnswers.length > 0
+          ? `<div style="font-size:16px;font-weight:700;color:#1e293b;margin:24px 0 12px;border-bottom:2px solid #e2e8f0;padding-bottom:8px">Questions to Revisit</div>${wrongAnswersHtml}`
+          : `<div style="background:#f0fdf4;border-radius:8px;padding:20px;text-align:center;margin:20px 0"><p style="color:#16a34a;font-size:18px;font-weight:700;margin:0">All answers correct!</p></div>`);
+      })();
 
   const html = `
     <!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -407,11 +423,6 @@ export async function sendExamResult(data: ExamResultData) {
       .h{background:linear-gradient(135deg,#0052CC,#0066FF);padding:32px;text-align:center}
       .h h1{color:#fff;margin:0;font-size:22px;font-weight:700}
       .b{padding:32px}
-      .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0}
-      .stat{background:#f8fafc;border-radius:8px;padding:16px;text-align:center}
-      .snum{font-size:28px;font-weight:800}
-      .slbl{font-size:12px;color:#94a3b8;margin-top:4px}
-      .stitle{font-size:16px;font-weight:700;color:#1e293b;margin:24px 0 12px;border-bottom:2px solid #e2e8f0;padding-bottom:8px}
       .f{background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8}
     </style></head><body>
     <div class="c">
@@ -424,15 +435,7 @@ export async function sendExamResult(data: ExamResultData) {
           <div style="font-size:16px;font-weight:600;color:${scoreColor}">${scoreLabel}</div>
           <div style="margin-top:8px;font-size:14px;color:${passed ? '#16a34a' : '#dc2626'};font-weight:600">${passed ? '✓ Passed' : '✗ Did not pass'} (pass mark: ${data.passMarkPercent}%)</div>
         </div>
-        <div class="stats">
-          <div class="stat"><div class="snum" style="color:#16a34a">${data.correctCount}</div><div class="slbl">Correct</div></div>
-          <div class="stat"><div class="snum" style="color:#dc2626">${data.wrongCount}</div><div class="slbl">Wrong</div></div>
-          <div class="stat"><div class="snum" style="color:#94a3b8">${data.skippedCount}</div><div class="slbl">Skipped</div></div>
-        </div>
-        ${data.wrongAnswers.length > 0 ? `<div class="stitle">Questions to Revisit</div>${wrongAnswersHtml}` : `
-        <div style="background:#f0fdf4;border-radius:8px;padding:20px;text-align:center;margin:20px 0">
-          <p style="color:#16a34a;font-size:18px;font-weight:700;margin:0">All answers correct!</p>
-        </div>`}
+        ${bottomSection}
       </div>
       <div class="f">&copy; ${new Date().getFullYear()} Esvita Clinic &bull; Secure Exam Management System<br>This is an automated message. Please do not reply.</div>
     </div></body></html>`;

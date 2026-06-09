@@ -35,7 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     examSession.audience?.nickname || examSession.audience?.name || examSession.externalName || 'Candidate';
   const lang = examSession.selectedLanguage as 'EN' | 'FRA' | 'RU' | 'TR' | 'ITA';
 
-  const wrongAnswers = examSession.answers
+  const hasSAQuestions = examSession.exam.questions.some((q) => q.type === 'short_answer');
+
+  const wrongAnswers = hasSAQuestions ? [] : examSession.answers
     .filter((a) => a.isCorrect === false && a.question.type === 'multiple_choice')
     .map((a) => ({
       questionText: getLocalized(a.question, 'question', lang) || '',
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     skippedCount: examSession.skippedCount ?? 0,
     passMarkPercent: examSession.exam.passMarkPercent,
     language: lang,
+    hasSAQuestions,
     wrongAnswers,
     audienceId: examSession.audienceId || undefined,
     examId: examSession.examId,

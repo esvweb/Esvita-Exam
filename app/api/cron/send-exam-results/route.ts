@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
       resultsEmailSentAt: null,
     },
     include: {
+      questions: { select: { type: true } },
       sessions: {
         where: { status: 'completed', isPreview: false },
         include: {
@@ -61,7 +62,9 @@ export async function GET(req: NextRequest) {
 
       const lang = session.selectedLanguage as 'EN' | 'FRA' | 'RU' | 'TR' | 'ITA';
 
-      const wrongAnswers = session.answers
+      const hasSAQuestions = exam.questions.some((q) => q.type === 'short_answer');
+
+      const wrongAnswers = hasSAQuestions ? [] : session.answers
         .filter((a) => a.question.type === 'multiple_choice' && a.isCorrect === false)
         .map((a) => {
           const q = a.question;
@@ -90,6 +93,7 @@ export async function GET(req: NextRequest) {
           skippedCount: session.skippedCount ?? 0,
           passMarkPercent: exam.passMarkPercent,
           language: lang,
+          hasSAQuestions,
           wrongAnswers,
           audienceId: session.audienceId || undefined,
           examId: exam.id,
