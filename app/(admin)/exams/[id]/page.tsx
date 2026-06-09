@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   ArrowLeft, Plus, Trash2, Upload, Send, Copy,
   HelpCircle, CheckCircle2, XCircle, Minus, Mail, Eye, Download,
-  Users, UsersRound, Search, Clock, ChevronDown, ChevronUp, UserSquare2,
+  Users, UsersRound, Search, Clock, ChevronDown, ChevronUp, UserSquare2, Languages,
 } from 'lucide-react';
 import Link from 'next/link';
 import { LANGUAGE_FLAGS, LANGUAGE_LABELS, getAvailableLanguages, formatDateTime } from '@/lib/utils';
@@ -19,6 +19,14 @@ import type { Language } from '@/types';
 
 const LANGS: Language[] = ['EN', 'FRA', 'RU', 'TR', 'ITA'];
 const OPTION_KEYS = ['A', 'B', 'C', 'D'];
+
+type SupportedLang = 'FRA' | 'RU' | 'TR' | 'ITA';
+const TRANSLATE_LANGS: { value: SupportedLang; label: string }[] = [
+  { value: 'FRA', label: 'French' },
+  { value: 'RU', label: 'Russian' },
+  { value: 'TR', label: 'Turkish' },
+  { value: 'ITA', label: 'Italian' },
+];
 
 interface Exam {
   id: string;
@@ -157,6 +165,11 @@ export default function ExamDetailPage() {
   const [savingQ, setSavingQ] = useState(false);
   const [activeLangTab, setActiveLangTab] = useState<Language>('EN');
 
+  // Translate Modal
+  const [showTranslateModal, setShowTranslateModal] = useState(false);
+  const [translateLangs, setTranslateLangs] = useState<Set<SupportedLang>>(new Set());
+  const [translating, setTranslating] = useState(false);
+
   // Import Modal
   const [showImport, setShowImport] = useState(false);
   const [importMode, setImportMode] = useState<'markdown' | 'text' | 'json' | 'pdf'>('markdown');
@@ -248,6 +261,34 @@ export default function ExamDetailPage() {
 
   const canDelete = ['super_admin', 'admin'].includes(userRole);
   const canWrite  = ['super_admin', 'admin', 'moderator'].includes(userRole);
+
+  // ─── Translate Exam ───────────────────────────────────────────────────────────
+  const handleTranslateExam = async () => {
+    if (translateLangs.size === 0) { error('Select at least one language'); return; }
+    setTranslating(true);
+    try {
+      const res = await fetch(`/api/admin/exams/${id}/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ languages: Array.from(translateLangs) }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        success(`Translated ${d.questionsTranslated} questions into ${(d.translatedLanguages as string[]).join(', ')}`);
+        setShowTranslateModal(false);
+        setTranslateLangs(new Set());
+        fetchExam();
+      } else {
+        let message = 'Translation failed';
+        try { message = (await res.json()).error || message; } catch {}
+        error(message);
+      }
+    } catch {
+      error('Translation failed — check your connection');
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   // ─── Delete Exam ──────────────────────────────────────────────────────────────
   const handleDeleteExam = async () => {
@@ -415,6 +456,9 @@ export default function ExamDetailPage() {
                 </button>
                 <button onClick={() => setShowImport(true)} className="btn-secondary btn-sm">
                   <Upload size={14} /> Import
+                </button>
+                <button onClick={() => { setTranslateLangs(new Set()); setShowTranslateModal(true); }} className="btn-secondary btn-sm">
+                  <Languages size={14} /> Translate
                 </button>
                 <button onClick={() => { setQForm(emptyQuestionForm()); setShowQModal(true); }} className="btn-primary btn-sm">
                   <Plus size={14} /> Add Question
@@ -1176,6 +1220,40 @@ EXPLANATION: Optional explanation (blank line between questions)`}</pre>
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── Translate Modal ───────────────────────────────────────────────────── */}
+      <Modal isOpen={showTranslateModal} onClose={() => setShowTranslateModal(false)} title="AI Translate Exam" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Select languages to translate into. The AI will translate the exam title, description, and all {exam._count.questions} questions using the English version as source.
+          </p>
+          <div className="space-y-2">
+            {TRANSLATE_LANGS.map(({ value, label }) => (
+              <label key={value} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-blue-600"
+                  checked={translateLangs.has(value)}
+                  onChange={(e) => {
+                    const next = new Set(translateLangs);
+                    if (e.target.checked) next.add(value); else next.delete(value);
+                    setTranslateLangs(next);
+                  }}
+                />
+                <span className="text-sm">{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-amber-600">Existing translations for selected languages will be overwritten. This may take a moment for large exams.</p>
+          <div className="flex justify-end gap-3">
+            <button className="btn-secondary" onClick={() => setShowTranslateModal(false)} disabled={translating}>Cancel</button>
+            <button className="btn-primary" onClick={handleTranslateExam} disabled={translating || translateLangs.size === 0}>
+              {translating ? <Spinner size="sm" className="text-white" /> : <Languages size={15} />}
+              {translating ? 'Translating...' : 'Translate'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* ── Delete Confirm ─────────────────────────────────────────────────────── */}

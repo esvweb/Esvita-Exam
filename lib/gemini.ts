@@ -18,7 +18,7 @@ export async function suggestScore(
   referenceAnswer: string,
   candidateAnswer: string
 ): Promise<ScoreSuggestionResult> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `You are an expert exam evaluator. Score the candidate's answer on a scale of 0 to 10.
 
@@ -78,7 +78,7 @@ export async function translateQuestion(
   input: TranslationInput,
   targetLanguage: SupportedLanguage
 ): Promise<TranslationOutput> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.5-flash' });
   const langName = LANG_NAMES[targetLanguage];
 
   const optionsSection = input.options?.length
@@ -134,6 +134,67 @@ export async function batchTranslate(
   await Promise.all(
     languages.map(async (lang) => {
       results[lang] = await translateQuestion(input, lang);
+    })
+  );
+
+  return results;
+}
+
+// ── Exam metadata translation (title + description) ──────────────────────────
+
+export interface ExamMetaInput {
+  title: string;
+  description?: string;
+}
+
+export interface ExamMetaOutput {
+  title: string;
+  description?: string;
+}
+
+export async function translateExamMeta(
+  input: ExamMetaInput,
+  targetLanguage: SupportedLanguage
+): Promise<ExamMetaOutput> {
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const langName = LANG_NAMES[targetLanguage];
+
+  const descSection = input.description ? `DESCRIPTION:\n${input.description}` : '';
+
+  const prompt = `Translate the following exam title and description from English to ${langName}.
+Preserve medical/technical terminology accurately. Keep the tone professional.
+
+TITLE:
+${input.title}
+${descSection}
+
+Respond ONLY with valid JSON in this exact format (include only fields that were provided):
+{
+  "title": "<translated title>",
+  ${input.description ? '"description": "<translated description>",' : ''}
+  "_dummy": null
+}
+
+Do not include anything outside the JSON object.`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text().trim();
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+
+  const parsed = JSON.parse(cleaned) as ExamMetaOutput & { _dummy?: null };
+  delete (parsed as { _dummy?: null })._dummy;
+  return parsed;
+}
+
+export async function batchTranslateExamMeta(
+  input: ExamMetaInput,
+  languages: SupportedLanguage[]
+): Promise<Partial<Record<SupportedLanguage, ExamMetaOutput>>> {
+  const results: Partial<Record<SupportedLanguage, ExamMetaOutput>> = {};
+
+  await Promise.all(
+    languages.map(async (lang) => {
+      results[lang] = await translateExamMeta(input, lang);
     })
   );
 
